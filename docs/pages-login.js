@@ -8,7 +8,7 @@ async function openJournal(){
 let completingSignIn=false;
 async function completeSignIn(){
   if(completingSignIn)return;completingSignIn=true;
-  const button=document.getElementById('google-button'),error=document.getElementById('unlock-error');button.disabled=true;error.textContent='';
+  const button=document.getElementById('google-button'),error=document.getElementById('unlock-error');button.disabled=true;error.textContent='Opening Google sign-in…';window.setTimeout(()=>{if(button.disabled&&error.textContent==='Opening Google sign-in…'){error.textContent='Google sign-in did not open. In Firebase Authentication → Settings → Authorized domains, add derickglanville.github.io, then reload this page.';button.disabled=false;}},5000);
   try{const signedIn=await window.GatherTransport.signIn();if(!signedIn)return;if(await window.GatherTransport.needsMigration()){document.getElementById('google-login').hidden=true;document.getElementById('migration-form').hidden=false;}else await openJournal();}
   catch(problem){error.textContent=problem.message;button.disabled=false;}
   finally{completingSignIn=false;}
