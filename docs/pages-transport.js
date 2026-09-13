@@ -1,6 +1,6 @@
 'use strict';
 window.GatherTransport=(()=>{
- const config={apiKey:'AIzaSyDF04WZ5ikrhM8ko7Bk6-OkkSzAJ65VFvE',authDomain:'glanville-issue-tracker.firebaseapp.com',projectId:'glanville-issue-tracker'};
+ const config={apiKey:'AIzaSyC1s8rJbIlukPwvlDi8KnlAHyFjYiqFd14',authDomain:'glanville-issue-tracker.firebaseapp.com',projectId:'glanville-issue-tracker'};
  const allowedEmail='dglanville@gmail.com';
  const databaseRoot=`https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents`;
  const root=`${databaseRoot}/food_tracker_meals`;
