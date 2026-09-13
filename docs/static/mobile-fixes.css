@@ -1,0 +1,5 @@
+@media(max-width:600px){
+ .filters select{flex:1 1 calc(50% - 8px);width:calc(50% - 8px);font-size:13px;padding-right:20px}
+ .filters #preparer-filter{max-width:none;flex:1 1 calc(50% - 8px)}
+ .filters #reset{width:calc(50% - 8px);text-align:left;padding-left:12px}
+}
