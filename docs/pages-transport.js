@@ -9,8 +9,16 @@ window.GatherTransport=(()=>{
  const bytes=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
  async function signIn(){
    if(!firebase.apps.length)firebase.initializeApp(config);
-   const result=await firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
-   const user=result.user;
+   const auth=firebase.auth();
+   let user=auth.currentUser;
+   if(!user){
+     const result=await auth.getRedirectResult();
+     user=result.user;
+   }
+   if(!user){
+     await auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
+     return;
+   }
    if(!user.emailVerified||user.email.toLowerCase()!==allowedEmail){await firebase.auth().signOut();throw Error(`Only ${allowedEmail} can use this journal.`);}
    token=await user.getIdToken();
  }
