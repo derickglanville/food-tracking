@@ -7,20 +7,34 @@ window.GatherTransport=(()=>{
  const documentRoot=`projects/${config.projectId}/databases/(default)/documents/food_tracker_meals`;
  const enc=new TextEncoder(),dec=new TextDecoder();let token='',oldKey=null;
  const bytes=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
- async function signIn(){
+ function authInstance(){
    if(!firebase.apps.length)firebase.initializeApp(config);
-   const auth=firebase.auth();
-   const user=auth.currentUser;
-   if(!user){
-     await auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
-     return false;
+   return firebase.auth();
+ }
+ async function acceptUser(user){
+   if(!user || !user.emailVerified || (user.email||'').toLowerCase()!==allowedEmail){
+     await authInstance().signOut();
+     throw Error('Only '+allowedEmail+' can use this journal.');
    }
-   if(!user.emailVerified||user.email.toLowerCase()!==allowedEmail){await firebase.auth().signOut();throw Error(`Only ${allowedEmail} can use this journal.`);}
    token=await user.getIdToken();
    return true;
  }
+ async function signIn(){
+   const auth=authInstance();
+   // Start the popup synchronously from the click, before any asynchronous work.
+   const result=await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+   return acceptUser(result.user);
+ }
+ async function restoreSession(){
+   const auth=authInstance();
+   const user=await new Promise((resolve,reject)=>{
+     const unsubscribe=auth.onAuthStateChanged(user=>{unsubscribe();resolve(user);},reject);
+   });
+   return user ? acceptUser(user) : false;
+ }
  async function remote(method,path='',params={},body){
    if(!token)throw Error('Sign in with Google before continuing.');
+   token=await authInstance().currentUser.getIdToken();
    const url=new URL(root+path);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
    let response;try{response=await fetch(url,{method,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},...(body?{body:JSON.stringify(body)}:{})});}
    catch{throw Error('Cannot reach Firebase. Your change has not been confirmed. Check your connection.');}
@@ -43,5 +57,5 @@ window.GatherTransport=(()=>{
  async function list(){const entries=(await rawList()).map(documentValue);if(entries.some(entry=>entry.schema==='gather-aes-gcm-v1'))throw Error('Migration required before the journal can open.');return entries;}
  async function request(path,options={}){const method=options.method||'GET';if(path==='/api/logout'){token='';await firebase.auth().signOut();return {ok:true};}if(path==='/api/import-summary'){const response=await fetch('./import-summary.json');return response.json();}if(path==='/api/meals'&&method==='GET')return {meals:await list(),storageMode:'firebase'};const id=path.startsWith('/api/meals/')?path.split('/').pop():crypto.randomUUID().replaceAll('-','');if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw Error('Invalid meal identifier.');if(method==='DELETE'){await remote('DELETE','/'+id);return {ok:true};}if(method==='POST'||method==='PUT'){const entry={...validate(JSON.parse(options.body)),id};if(method==='POST')entry.source='Manual entry';await remote('PATCH','/'+id,{'currentDocument.exists':method==='POST'?'false':'true'},{fields:typedFields(entry)});return entry;}throw Error('Unsupported operation.');}
  async function exportCSV(){const fields=['date','mealType','meal','derickMeal','preparer','preparation','notes','source'];const cell=value=>{let text=String(value??'');if(/^[=+\-@\t\r]/.test(text))text="'"+text;return '"'+text.replaceAll('"','""')+'"';};const entries=await list();entries.sort((a,b)=>b.date.localeCompare(a.date));const csv='\uFEFF'+[fields.map(cell).join(','),...entries.map(e=>fields.map(f=>cell(e[f])).join(','))].join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='meal-history.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
- return {signIn,needsMigration,migrate,request,exportCSV};
+ return {signIn,restoreSession,needsMigration,migrate,request,exportCSV};
 })();
