@@ -10,17 +10,14 @@ window.GatherTransport=(()=>{
  async function signIn(){
    if(!firebase.apps.length)firebase.initializeApp(config);
    const auth=firebase.auth();
-   let user=auth.currentUser;
-   if(!user){
-     const result=await auth.getRedirectResult();
-     user=result.user;
-   }
+   const user=auth.currentUser;
    if(!user){
      await auth.signInWithRedirect(new firebase.auth.GoogleAuthProvider());
-     return;
+     return false;
    }
    if(!user.emailVerified||user.email.toLowerCase()!==allowedEmail){await firebase.auth().signOut();throw Error(`Only ${allowedEmail} can use this journal.`);}
    token=await user.getIdToken();
+   return true;
  }
  async function remote(method,path='',params={},body){
    if(!token)throw Error('Sign in with Google before continuing.');
