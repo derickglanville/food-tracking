@@ -14,7 +14,7 @@ async function completeSignIn(){
   finally{completingSignIn=false;}
 }
 document.getElementById('google-button').addEventListener('click',completeSignIn);
-if(!firebase.apps.length)firebase.initializeApp({apiKey:'AIzaSyDF04WZikrhM8ko7Bk6-OkkSzAJ65VFvE',authDomain:'glanville-issue-tracker.firebaseapp.com',projectId:'glanville-issue-tracker'});
+if(!firebase.apps.length)firebase.initializeApp({apiKey:'AIzaSyDF04wZ5ikrhM8ko7Bk6-OkkSzAJ65VFvE',authDomain:'glanville-issue-tracker.firebaseapp.com',projectId:'glanville-issue-tracker'});
 firebase.auth().onAuthStateChanged(user=>{if(user)completeSignIn();});
 document.getElementById('migration-form').addEventListener('submit',async event=>{
   event.preventDefault();const button=document.getElementById('unlock-button'),error=document.getElementById('migration-error');button.disabled=true;error.textContent='Preparing your encrypted meals…';
