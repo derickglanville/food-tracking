@@ -5,8 +5,9 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
 const formatDate = value => new Date(value+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 const icons = {Breakfast:'☀',Lunch:'◒',Dinner:'☾',Snack:'✧'};
 let meals = [], filtered = [], currentView = 'dashboard', page = 0, loaded = false;
-const pageSize = 20;
-const titles = {dashboard:['Overview','Your table, at a glance.','A little reflection. A little inspiration. A meal at a time.'],journal:['Meal journal','Every meal has a story.','Find a favorite, remember a meal, or see who made it.'],trends:['Trends','Your family’s food rhythm.','See how meals and preparation change over time.'],ideas:['Meal ideas','A little inspiration for your table.','Simple, colorful ideas to make your everyday meals feel fresh.']};
+let selectedDay = today();
+let calendarToday = today();
+const titles = {dashboard:['Overview','One day at your table.','Breakfast, lunch, and dinner — together in one daily card.'],journal:['Meal journal','Your daily meal cards.','Move between days or choose a date to see the whole day.'],trends:['Trends','Your family’s food rhythm.','See how meals and preparation change over time.'],ideas:['Meal ideas','A little inspiration for your table.','Simple, colorful ideas to make your everyday meals feel fresh.']};
 
 async function api(path, options = {}) {
   if(window.GatherTransport) return window.GatherTransport.request(path, options);
@@ -55,19 +56,61 @@ function applyFilters() {
   else if(range!=='all') { const d=new Date(today()+'T12:00:00'); d.setDate(d.getDate()-Number(range)+1); start=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
   else end='';
   filtered=meals.filter(e=>(!start||e.date>=start)&&(!end||e.date<=end)&&(!type||e.mealType===type)&&(!cook||(cook==='__missing'?!e.preparer:e.preparer===cook))&&(!q||[e.meal,e.derickMeal,e.preparer,e.mealType,e.notes].some(v=>(v||'').toLowerCase().includes(q))));
-  page=0; render();
+  const days=availableDays();
+  if(days.length&&!days.includes(selectedDay)) selectedDay=days[days.length-1];
+  render();
 }
 function render() {
   $('stats').innerHTML=stats(filtered); $('trend-stats').innerHTML=stats(filtered);
-  $('recent').innerHTML=filtered.slice(0,5).map(row).join('')||empty();
+  $('recent').innerHTML=dayCard();
   $('cooks').innerHTML=bars(Object.fromEntries(sortedCounts(group(knownCooks(filtered),'preparer')).slice(0,5)));
   renderJournal(); renderTrends(); renderIdeas();
 }
+function shiftDate(value,amount) {
+  const date=new Date(value+'T12:00:00'); date.setDate(date.getDate()+amount);
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+function hasMealFilters(){return !!($('search').value.trim()||$('type-filter').value||$('preparer-filter').value);}
+function availableDays(){
+  const range=$('period').value;
+  const dates=meals.map(e=>e.date).concat(today());
+  let first=range==='all'?dates.concat(selectedDay).sort()[0]:range==='custom'?($('from').value||dates.sort()[0]):shiftDate(today(),-Number(range)+1);
+  let last=range==='all'?dates.sort().at(-1):range==='custom'?($('to').value||today()):today();
+  if(hasMealFilters())return [...new Set(filtered.map(e=>e.date))].sort();
+  const days=[];for(let d=first;d<=last;d=shiftDate(d,1))days.push(d);
+  return days;
+}
+function dayCard(){
+  const days=availableDays();
+  if(!days.length)return '<div class="empty"><b>No days match these filters.</b>Clear your filters or return to today.<br><button class="secondary" data-day-today>Today</button></div>';
+  const index=days.indexOf(selectedDay), entries=meals.filter(e=>e.date===selectedDay);
+  const types=['Breakfast','Lunch','Dinner'];if(entries.some(e=>e.mealType==='Snack'))types.push('Snack');
+  const complete=types.slice(0,3).filter(t=>entries.some(e=>e.mealType===t)).length;
+  const label=new Date(selectedDay+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const matchIds=new Set(filtered.map(e=>e.id));
+  return `<div class="day-navigation" aria-label="Day navigation"><button class="secondary" data-day-shift="-1" ${index<=0?'disabled':''}>← Previous day</button><label class="day-picker">Choose a day<input type="date" data-day-date value="${selectedDay}" aria-label="Choose a day"></label><button class="secondary" data-day-shift="1" ${index>=days.length-1?'disabled':''}>Next day →</button><button class="text-button" data-day-today>Today</button></div>
+  <article class="day-card" data-date="${selectedDay}" aria-label="Meals for ${label}"><header class="day-card-header"><div><p class="eyebrow">${selectedDay===today()?'TODAY’S CARD':'DAILY MEAL CARD'}</p><h2>${label}</h2><p>${complete} of 3 meals recorded${hasMealFilters()?' · Showing the full day for your matching meals':''}</p></div><span class="day-progress" aria-label="${complete} of 3 meals recorded">${complete}/3</span></header>
+  <div class="day-meals">${types.map(type=>{
+    const rows=entries.filter(e=>e.mealType===type);
+    return `<section class="day-meal" data-meal-type="${type}"><div class="day-meal-heading"><span class="meal-icon ${type}">${icons[type]}</span><h3>${type}</h3><span class="meal-state">${rows.length?'Recorded':'Not recorded'}</span></div>${rows.length?rows.map(e=>`<div class="day-entry"><h4>${escapeHtml(e.meal||'Main meal not recorded')}</h4>${e.derickMeal?`<p class="day-other"><b>Derick</b> ${escapeHtml(e.derickMeal.toLowerCase()==='same'?(e.meal||'Same (main meal not recorded)'):e.derickMeal)}</p>`:''}<p class="day-preparer">Prepared / bought by <b>${escapeHtml(e.preparer||'Not recorded')}</b></p>${e.notes?`<p class="day-notes">${escapeHtml(e.notes)}</p>`:''}${e.needsReview?'<span class="review-badge">Review preparer</span>':''}${hasMealFilters()&&matchIds.has(e.id)?'<span class="match-badge">Matches search</span>':''}<button class="secondary" data-edit="${escapeHtml(e.id)}" aria-label="Edit ${type} on ${selectedDay}">Edit ${type.toLowerCase()} ↗</button></div>`).join(''):`<div class="day-blank"><p>A space for your ${type.toLowerCase()}.</p><button class="secondary" data-day-add="${type}" data-date="${selectedDay}">＋ Add ${type.toLowerCase()}</button></div>`}</section>`;
+  }).join('')}</div><div class="day-card-footer"><span>${entries.length} saved meal ${entries.length===1?'entry':'entries'} · ${hasMealFilters()?`${days.length} matching days`:'A fresh card is ready every day'}</span><button class="text-button" data-day-add="Snack" data-date="${selectedDay}">＋ Add snack</button></div></article>`;
+}
 function renderJournal() {
-  $('journal-count').textContent=`${filtered.length.toLocaleString()} meal occasions · showing current filters`;
-  $('journal-list').innerHTML=filtered.slice(page*pageSize,(page+1)*pageSize).map(row).join('')||empty();
-  $('page-count').textContent=`Page ${page+1} of ${Math.max(1,Math.ceil(filtered.length/pageSize))}`;
-  $('prev').disabled=page===0; $('next').disabled=(page+1)*pageSize>=filtered.length;
+  $('journal-count').textContent=`${filtered.length.toLocaleString()} meal occasions · grouped by day`;
+  $('journal-list').innerHTML=dayCard();
+}
+function goToDay(value){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value)||isNaN(Date.parse(value)))return;
+  selectedDay=value;
+  $('search').value='';$('period').value='all';$('type-filter').value='';$('preparer-filter').value='';
+  applyFilters();
+}
+function checkNewDay(){
+  const current=today();if(current===calendarToday)return;
+  if(selectedDay===calendarToday)selectedDay=current;
+  calendarToday=current;
+  $('today-label').textContent=new Date().toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+  applyFilters();
 }
 function renderTrends() {
   const monthly={};
@@ -133,19 +176,25 @@ async function load() {
 function sortMeals(){const order={Breakfast:0,Lunch:1,Dinner:2,Snack:3};meals.sort((a,b)=>b.date.localeCompare(a.date)||order[a.mealType]-order[b.mealType]);}
 document.addEventListener('click',event=>{
   const nav=event.target.closest('[data-view],[data-go]');if(nav)setView(nav.dataset.view||nav.dataset.go);
-  if(event.target.closest('.add-meal'))openMeal();
+  if(event.target.closest('.add-meal'))openMeal({date:selectedDay});
+  const dayAdd=event.target.closest('[data-day-add]');if(dayAdd)openMeal({date:dayAdd.dataset.date,mealType:dayAdd.dataset.dayAdd});
+  const dayShift=event.target.closest('[data-day-shift]');if(dayShift){const days=availableDays();selectedDay=days[days.indexOf(selectedDay)+Number(dayShift.dataset.dayShift)]||selectedDay;render();}
+  if(event.target.closest('[data-day-today]'))goToDay(today());
   const edit=event.target.closest('[data-edit]');if(edit)openMeal(meals.find(e=>e.id===edit.dataset.edit));
   const recipe=event.target.closest('[data-recipe]');if(recipe){const r=recipes[Number(recipe.dataset.recipe)];openMeal({meal:r.name,mealType:r.type,preparation:'Home cooked'});}
 });
 ['search','period','type-filter','preparer-filter','from','to'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',applyFilters));
 ['diet','avoid'].forEach(id=>$(id).addEventListener(id==='avoid'?'input':'change',renderIdeas));
 $('reset').onclick=()=>{$('search').value='';$('period').value='all';$('type-filter').value='';$('preparer-filter').value='';$('from').value='';$('to').value='';applyFilters();};
-$('prev').onclick=()=>{page--;renderJournal();};$('next').onclick=()=>{page++;renderJournal();};
+document.addEventListener('change',event=>{if(event.target.matches('[data-day-date]'))goToDay(event.target.value);});
+setInterval(checkNewDay,30000);
+window.addEventListener('focus',checkNewDay);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkNewDay();});
 $('close-dialog').onclick=()=>$('meal-dialog').close();
 $('meal-form').onsubmit=async event=>{
   event.preventDefault();const form=event.target,data=Object.fromEntries(new FormData(form));data.needsReview=form.elements.namedItem('needsReview').checked;
   $('save-meal').disabled=true;$('delete-meal').disabled=true;$('form-error').textContent='';
-  try {const entry=await api('/api/meals'+(data.id?'/'+data.id:''),{method:data.id?'PUT':'POST',body:JSON.stringify(data)});meals=meals.filter(e=>e.id!==entry.id);meals.push(entry);sortMeals();updateOptions();applyFilters();$('meal-dialog').close();notice('Meal saved to Firebase.');}
+  try {const entry=await api('/api/meals'+(data.id?'/'+data.id:''),{method:data.id?'PUT':'POST',body:JSON.stringify(data)});meals=meals.filter(e=>e.id!==entry.id);meals.push(entry);selectedDay=entry.date;sortMeals();updateOptions();applyFilters();$('meal-dialog').close();notice('Meal saved to Firebase.');}
   catch(error){$('form-error').textContent=error.message;}
   finally{$('save-meal').disabled=false;$('delete-meal').disabled=false;}
 };
@@ -159,5 +208,5 @@ $('delete-meal').onclick=async()=>{
 $('logout').onclick=async()=>{try{await api('/api/logout',{method:'POST'});location.href=window.GatherTransport?'./':'/login';}catch(error){notice(error.message,true);}};
 if(window.GatherTransport) document.querySelector('a[href="/api/export"]').onclick=async event=>{event.preventDefault();try{await window.GatherTransport.exportCSV();}catch(error){notice(error.message,true);}};
 $('today-label').textContent=new Date().toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
-render();load();
+setView('dashboard');render();load();
 api('/api/import-summary').then(s=>{if(s.count)$('import-note').textContent=`Imported ${s.count.toLocaleString()} meal entries from ${s.source}, ${formatDate(s.firstDate)}–${formatDate(s.lastDate)}. ${s.reviewCount} preparer values need review. ${s.warnings.filter(w=>w.startsWith('Duplicate')).length} repeated date/type entries were retained separately; source dates have not been corrected. “Same” means the main meal on that row. Main meal is the spreadsheet’s unlabeled food column. CSV exports the full history.`;}).catch(()=>{});
