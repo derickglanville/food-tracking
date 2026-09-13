@@ -11,7 +11,7 @@ document.getElementById('google-button').addEventListener('click',async()=>{
   catch(problem){error.textContent=problem.message;button.disabled=false;}
 });
 document.getElementById('migration-form').addEventListener('submit',async event=>{
-  event.preventDefault();const button=document.getElementById('unlock-button'),error=document.getElementById('migration-error');button.disabled=true;error.textContent='';
-  try{await window.GatherTransport.migrate(document.getElementById('code').value);await openJournal();}
+  event.preventDefault();const button=document.getElementById('unlock-button'),error=document.getElementById('migration-error');button.disabled=true;error.textContent='Preparing your encrypted meals…';
+  try{await window.GatherTransport.migrate(document.getElementById('code').value,message=>error.textContent=message);await openJournal();}
   catch(problem){error.textContent=problem.message;button.disabled=false;}
 });

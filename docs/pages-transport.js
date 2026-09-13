@@ -2,7 +2,8 @@
 window.GatherTransport=(()=>{
  const config={apiKey:'AIzaSyDF04WZ5ikrhM8ko7Bk6-OkkSzAJ65VFvE',authDomain:'glanville-issue-tracker.firebaseapp.com',projectId:'glanville-issue-tracker'};
  const allowedEmail='dglanville@gmail.com';
- const root=`https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/food_tracker_meals`;
+ const databaseRoot=`https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents`;
+ const root=`${databaseRoot}/food_tracker_meals`;
  const enc=new TextEncoder(),dec=new TextDecoder();let token='',oldKey=null;
  const bytes=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
  async function signIn(){
@@ -26,10 +27,11 @@ window.GatherTransport=(()=>{
  async function rawList(){const entries=[];let pageToken='';do{const page=await remote('GET','',{pageSize:1000,...(pageToken?{pageToken}:{})});entries.push(...(page.documents||[]));pageToken=page.nextPageToken;}while(pageToken);return entries;}
  async function needsMigration(){return (await rawList()).some(doc=>documentValue(doc).schema==='gather-aes-gcm-v1');}
  async function oldEncryptionKey(code){const material=await crypto.subtle.importKey('raw',enc.encode(code),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt:enc.encode('gather-v1|glanville-issue-tracker|food_tracker_meals'),iterations:210000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['decrypt']);}
- async function migrate(code){
+ async function migrate(code,progress=()=>{}){
    oldKey=await oldEncryptionKey(code);const documents=await rawList();const encrypted=documents.filter(doc=>documentValue(doc).schema==='gather-aes-gcm-v1');if(!encrypted.length)return;
    const converted=[];for(const doc of encrypted){const envelope=documentValue(doc),id=envelope.id;try{const raw=await crypto.subtle.decrypt({name:'AES-GCM',iv:bytes(envelope.nonce),additionalData:enc.encode(id)},oldKey,bytes(envelope.payload));converted.push({id,...JSON.parse(dec.decode(raw))});}catch{throw Error('The prior access code did not match. No records were changed.');}}
-   for(const entry of converted)await remote('PATCH','/'+entry.id,{'currentDocument.exists':'true'},{fields:typedFields(entry)});oldKey=null;
+   for(let start=0;start<converted.length;start+=500){const batch=converted.slice(start,start+500);progress(`Saving ${Math.min(start+batch.length,converted.length)} of ${converted.length} meals…`);const response=await fetch(`${databaseRoot}:commit`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({writes:batch.map(entry=>({update:{name:`${root}/${entry.id}`,fields:typedFields(entry)},currentDocument:{exists:true}}))})});if(!response.ok)throw Error(`Firebase returned ${response.status}. Your completed batches were saved; tap again to continue.`);}
+   oldKey=null;
  }
  function validate(data){const limits={date:10,mealType:20,meal:500,derickMeal:500,preparer:120,preparation:30,notes:1000,source:250};const result={};for(const [field,max] of Object.entries(limits)){const value=data[field]??'';if(typeof value!=='string'||value.length>max)throw Error(`Invalid ${field}.`);result[field]=value.trim();}if(!/^\d{4}-\d{2}-\d{2}$/.test(result.date)||isNaN(Date.parse(result.date))||new Date(result.date).toISOString().slice(0,10)!==result.date)throw Error('Choose a valid date.');if(!['Breakfast','Lunch','Dinner','Snack'].includes(result.mealType))throw Error('Choose a meal type.');if(!['Home cooked','Bought','Leftovers','Unspecified'].includes(result.preparation))throw Error('Choose a preparation type.');if(!result.meal&&!result.derickMeal)throw Error('Enter a meal for at least one person.');result.needsReview=!!data.needsReview;return result;}
  async function list(){const entries=(await rawList()).map(documentValue);if(entries.some(entry=>entry.schema==='gather-aes-gcm-v1'))throw Error('Migration required before the journal can open.');return entries;}
