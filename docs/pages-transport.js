@@ -61,7 +61,12 @@ window.GatherTransport=(()=>{
  function documentValue(doc){const entry={};for(const [name,value] of Object.entries(doc.fields||{}))entry[name]=fieldValue(value);entry.id=doc.name.split('/').pop();return entry;}
  function typedFields(entry){const fields={};for(const [name,value] of Object.entries(entry)){if(name==='id')continue;fields[name]=typeof value==='boolean'?{booleanValue:value}:{stringValue:String(value)};}return fields;}
  async function rawList(collection='food_tracker_meals'){const entries=[];let pageToken='';do{const page=await remote('GET','',{pageSize:1000,...(pageToken?{pageToken}:{})},undefined,collection);entries.push(...(page.documents||[]));pageToken=page.nextPageToken;}while(pageToken);return entries;}
- async function needsMigration(){return (await rawList()).some(doc=>documentValue(doc).schema==='gather-aes-gcm-v1');}
+ async function needsMigration(){
+  if(!token)throw Error('Sign in with Google before continuing.');
+  const response=await fetch(`${databaseRoot}:runQuery`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({structuredQuery:{from:[{collectionId:'food_tracker_meals'}],where:{fieldFilter:{field:{fieldPath:'schema'},op:'EQUAL',value:{stringValue:'gather-aes-gcm-v1'}}},limit:1}})});
+  if(!response.ok)throw Error(`Firebase returned ${response.status}. Check Google sign-in and Firestore access.`);
+  return (await response.json()).some(row=>row.document);
+}
  async function oldEncryptionKey(code){const material=await crypto.subtle.importKey('raw',enc.encode(code),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt:enc.encode('gather-v1|glanville-issue-tracker|food_tracker_meals'),iterations:210000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['decrypt']);}
  async function migrate(code,progress=()=>{}){
    oldKey=await oldEncryptionKey(code);const documents=await rawList();const encrypted=documents.filter(doc=>documentValue(doc).schema==='gather-aes-gcm-v1');if(!encrypted.length)return;
