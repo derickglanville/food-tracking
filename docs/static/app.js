@@ -6,6 +6,7 @@ const formatDate = value => new Date(value+'T12:00:00').toLocaleDateString(undef
 const icons = {Breakfast:'☀',Lunch:'◒',Dinner:'☾',Snack:'✧'};
 let meals = [], filtered = [], healthRecords = [], wellnessRecords = [], healthLoaded = false, wellnessLoaded = false, currentView = 'dashboard', page = 0, loaded = false;
 let selectedDay = today();
+let lastTodayRefresh = 0;
 let calendarToday = today();
 const titles = {dashboard:['Overview','One day at your table.','Breakfast, lunch, and dinner — together in one daily card.'],journal:['Meal journal','Your daily meal cards.','Move between days or choose a date to see the whole day.'],trends:['Trends','Your family’s food rhythm.','See how meals and preparation change over time.'],ideas:['Meal ideas','A little inspiration for your table.','Simple, colorful ideas to make your everyday meals feel fresh.'],health:['Daily health','Your daily health check.','Track activity and everyday measurements over time.'],wellness:['Daily wellness','Your daily wellness check.','A simple private record for each day.']};
 
@@ -202,8 +203,11 @@ function updateOptions() {
   if([...$('preparer-filter').options].some(o=>o.value===current))$('preparer-filter').value=current;
   $('preparer-options').innerHTML=names.map(n=>`<option value="${escapeHtml(n)}"></option>`).join('');
 }
+function applyMeals(data){
+  meals=data.meals;sortMeals();loaded=true;updateOptions();applyFilters();
+}
 async function load() {
-  try {const data=await api('/api/meals');meals=data.meals;sortMeals();loaded=true;updateOptions();applyFilters();
+  try {const data=await api('/api/meals');applyMeals(data);
     if(data.storageMode==='preview'){
       $('connection').textContent='Spreadsheet preview';$('sync-status').textContent='Read-only local preview';
       notice('Spreadsheet preview · Firebase import approval is pending. You can explore your history and meal ideas; changes cannot be saved yet.');
@@ -213,6 +217,15 @@ async function load() {
   catch(error){$('connection').textContent='Connection unavailable';notice(error.message,true);}
 }
 function sortMeals(){const order={Breakfast:0,Lunch:1,Dinner:2,Snack:3};meals.sort((a,b)=>b.date.localeCompare(a.date)||order[a.mealType]-order[b.mealType]);}
+async function refreshToday(silent=false){
+  if(Date.now()-lastTodayRefresh<60*1000)return;
+  lastTodayRefresh=Date.now();
+  const button=$('refresh-today');if(button)button.disabled=true;
+  try{applyMeals(await api('/api/meals/refresh-today'));if(!silent)notice('Today’s meals refreshed from Firebase.');}
+  catch(error){if(!silent)notice(error.message,true);}
+  finally{if(button)button.disabled=false;}
+}
+
 document.addEventListener('click',event=>{
   const nav=event.target.closest('[data-view],[data-go]');if(nav)setView(nav.dataset.view||nav.dataset.go);
   if(event.target.closest('.add-meal'))openMeal({date:selectedDay});
@@ -225,11 +238,12 @@ document.addEventListener('click',event=>{
 });
 ['search','period','type-filter','preparer-filter','from','to'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',applyFilters));
 ['diet','avoid'].forEach(id=>$(id).addEventListener(id==='avoid'?'input':'change',renderIdeas));
+$('refresh-today').onclick=()=>refreshToday();
 $('reset').onclick=()=>{$('search').value='';$('period').value='all';$('type-filter').value='';$('preparer-filter').value='';$('from').value='';$('to').value='';applyFilters();};
 document.addEventListener('change',event=>{if(event.target.matches('[data-day-date]'))goToDay(event.target.value);});
 setInterval(checkNewDay,30000);
-window.addEventListener('focus',checkNewDay);
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkNewDay();});
+window.addEventListener('focus',()=>{checkNewDay();refreshToday(true);});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkNewDay();refreshToday(true);}});
 $('close-dialog').onclick=()=>$('meal-dialog').close();
 const autosaveTimers={};
 function scheduleAutosave(form,canSave){
