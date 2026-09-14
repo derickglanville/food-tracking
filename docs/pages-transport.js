@@ -81,7 +81,7 @@ window.GatherTransport=(()=>{
    if(time&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))throw Error('Choose a valid time.');
    return {date,bowelMovement,time,notes:String(data.notes||'').trim().slice(0,300)};
  }
- async function saveTracker(collection,id,data){const entry={...data,id};await remote('PATCH','/'+id,{'currentDocument.exists':'true'},{fields:typedFields(entry)},collection);updateCachedEntry(collection,entry);return entry;}
+ async function saveTracker(collection,id,data){const entry={...data,id};await remote('PATCH','/'+id,{}, {fields:typedFields(entry)},collection);updateCachedEntry(collection,entry);return entry;}
  async function importTracker(collection,kind,records){
    if(!Array.isArray(records)||!records.length||records.length>500)throw Error('Choose a valid wellness import file with up to 500 records.');
    const entries=records.map(item=>{const data=validateTracker(item,kind);return {...data,id:'wellness_'+data.date.replaceAll('-','')};});

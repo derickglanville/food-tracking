@@ -90,6 +90,8 @@ function renderWellness(){
   const form=$('wellness-form');if(!form)return;
   const current=wellnessFor(form.elements.date.value||today());
   if(document.activeElement!==form.elements.date)Object.entries({date:form.elements.date.value||today(),bowelMovement:'Yes',time:'',notes:'',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
+  const days=Array.from({length:7},(_,index)=>shiftDate(today(),index-6));
+  $('wellness-week-grid').innerHTML=days.map(date=>{const record=wellnessFor(date),label=new Date(date+'T12:00:00').toLocaleDateString(undefined,{weekday:'short'});return `<article class="wellness-day ${record.bowelMovement==='Yes'?'wellness-yes':record.bowelMovement==='No'?'wellness-no':'wellness-empty'}"><span>${label}</span><b>${record.bowelMovement||'—'}</b><small>${new Date(date+'T12:00:00').toLocaleDateString(undefined,{month:'numeric',day:'numeric'})}</small></article>`;}).join('');
   const recent=[...wellnessRecords].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,14);
   $('wellness-history').innerHTML=recent.length?`<div class="table-scroll"><table><thead><tr><th>Date</th><th>Bowel movement</th><th>Time</th><th>Notes</th></tr></thead><tbody>${recent.map(r=>`<tr><td>${formatDate(r.date)}</td><td>${escapeHtml(r.bowelMovement)}</td><td>${escapeHtml(r.time||'—')}</td><td>${escapeHtml(r.notes||'—')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No wellness checks saved yet.</div>';
 }
