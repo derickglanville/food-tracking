@@ -126,9 +126,17 @@ function dayCard(){
     return `<section class="day-meal" data-meal-type="${type}"><div class="day-meal-heading"><span class="meal-icon ${type}">${icons[type]}</span><h3>${type}</h3><span class="meal-state">${rows.length?'Recorded':'Not recorded'}</span></div>${rows.length?rows.map(e=>`<div class="day-entry"><h4>${escapeHtml(e.meal||'Main meal not recorded')}</h4>${e.derickMeal?`<p class="day-other"><b>Derick</b> ${escapeHtml(e.derickMeal.toLowerCase()==='same'?(e.meal||'Same (main meal not recorded)'):e.derickMeal)}</p>`:''}<p class="day-preparer">Prepared / bought by <b>${escapeHtml(e.preparer||'Not recorded')}</b></p>${e.notes?`<p class="day-notes">${escapeHtml(e.notes)}</p>`:''}${e.needsReview?'<span class="review-badge">Review preparer</span>':''}${hasMealFilters()&&matchIds.has(e.id)?'<span class="match-badge">Matches search</span>':''}<button class="secondary" data-edit="${escapeHtml(e.id)}" aria-label="Edit ${type} on ${selectedDay}">Edit ${type.toLowerCase()} ↗</button></div>`).join(''):`<div class="day-blank"><p>A space for your ${type.toLowerCase()}.</p><button class="secondary" data-day-add="${type}" data-date="${selectedDay}">＋ Add ${type.toLowerCase()}</button></div>`}</section>`;
   }).join('')}</div><div class="day-card-footer"><span>${entries.length} saved meal ${entries.length===1?'entry':'entries'} · ${hasMealFilters()?`${days.length} matching days`:'A fresh card is ready every day'}</span><button class="text-button" data-day-add="Snack" data-date="${selectedDay}">＋ Add snack</button></div></article>`;
 }
+function journalHistoryGrid(){
+  const dates=Array.from({length:7},(_,index)=>shiftDate(selectedDay,-(index+1)));
+  return `<section class="journal-history"><div class="panel-head"><div><h2>Previous daily meals</h2><p class="muted">Choose a card to open that day’s meal record.</p></div></div><div class="journal-day-grid">${dates.map(date=>{
+    const entries=meals.filter(entry=>entry.date===date), label=new Date(date+'T12:00:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+    const summary=['Breakfast','Lunch','Dinner'].map(type=>{const entry=entries.find(item=>item.mealType===type);return `<li><span>${icons[type]} ${type}</span><b>${escapeHtml(entry?(entry.meal||entry.derickMeal||'Recorded'):'—')}</b></li>`;}).join('');
+    return `<button type="button" class="journal-day ${entries.length?'has-meals':''}" data-journal-day="${date}" aria-label="Open meals for ${label}"><header><span>${label}</span><strong>${entries.length}/3</strong></header><ul>${summary}</ul></button>`;
+  }).join('')}</div></section>`;
+}
 function renderJournal() {
   $('journal-count').textContent=`${filtered.length.toLocaleString()} meal occasions · grouped by day`;
-  $('journal-list').innerHTML=dayCard();
+  $('journal-list').innerHTML=dayCard()+journalHistoryGrid();
 }
 function goToDay(value){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(value)||isNaN(Date.parse(value)))return;
@@ -211,6 +219,7 @@ document.addEventListener('click',event=>{
   const dayAdd=event.target.closest('[data-day-add]');if(dayAdd)openMeal({date:dayAdd.dataset.date,mealType:dayAdd.dataset.dayAdd});
   const dayShift=event.target.closest('[data-day-shift]');if(dayShift){const days=availableDays();selectedDay=days[days.indexOf(selectedDay)+Number(dayShift.dataset.dayShift)]||selectedDay;render();}
   if(event.target.closest('[data-day-today]'))goToDay(today());
+  const journalDay=event.target.closest('[data-journal-day]');if(journalDay)goToDay(journalDay.dataset.journalDay);
   const edit=event.target.closest('[data-edit]');if(edit)openMeal(meals.find(e=>e.id===edit.dataset.edit));
   const recipe=event.target.closest('[data-recipe]');if(recipe){const r=recipes[Number(recipe.dataset.recipe)];openMeal({meal:r.name,mealType:r.type,preparation:'Home cooked'});}
 });
