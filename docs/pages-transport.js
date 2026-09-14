@@ -37,9 +37,17 @@ window.GatherTransport=(()=>{
    if(!token)throw Error('Sign in with Google before continuing.');
    token=await authInstance().currentUser.getIdToken();
    const url=new URL((collection==='food_tracker_meals'?root:collectionRoot(collection))+path);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
-   let response;try{response=await fetch(url,{method,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},...(body?{body:JSON.stringify(body)}:{})});}
-   catch{throw Error('Cannot reach Firebase. Your change has not been confirmed. Check your connection.');}
-   if(!response.ok)throw Error(`Firebase returned ${response.status}. Check Google sign-in and Firestore access.`);
+   let response;for(let attempt=0;attempt<4;attempt++){
+     try{response=await fetch(url,{method,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},...(body?{body:JSON.stringify(body)}:{})});}
+     catch{throw Error('Cannot reach Firebase. Your change has not been confirmed. Check your connection.');}
+     if(response.status!==429||attempt===3)break;
+     await new Promise(resolve=>setTimeout(resolve,1000*(attempt+1)));
+   }
+   if(!response.ok){
+     let detail='';try{detail=await response.text();}catch{}
+     if(response.status===429)throw Error('Firebase is temporarily busy. Please wait a minute, then try again.');
+     throw Error(`Firebase returned ${response.status}. ${detail.slice(0,160)||'Check Google sign-in and Firestore access.'}`);
+   }
    return response.status===204?{}:response.json();
  }
  function fieldValue(value){return value.stringValue??value.booleanValue??value.integerValue??value.doubleValue??null;}

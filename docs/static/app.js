@@ -4,7 +4,7 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const formatDate = value => new Date(value+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 const icons = {Breakfast:'☀',Lunch:'◒',Dinner:'☾',Snack:'✧'};
-let meals = [], filtered = [], healthRecords = [], wellnessRecords = [], currentView = 'dashboard', page = 0, loaded = false;
+let meals = [], filtered = [], healthRecords = [], wellnessRecords = [], healthLoaded = false, wellnessLoaded = false, currentView = 'dashboard', page = 0, loaded = false;
 let selectedDay = today();
 let calendarToday = today();
 const titles = {dashboard:['Overview','One day at your table.','Breakfast, lunch, and dinner — together in one daily card.'],journal:['Meal journal','Your daily meal cards.','Move between days or choose a date to see the whole day.'],trends:['Trends','Your family’s food rhythm.','See how meals and preparation change over time.'],ideas:['Meal ideas','A little inspiration for your table.','Simple, colorful ideas to make your everyday meals feel fresh.'],health:['Daily health','Your daily health check.','Track activity and everyday measurements over time.'],wellness:['Daily wellness','Your daily wellness check.','A simple private record for each day.']};
@@ -27,7 +27,18 @@ function setView(view) {
   const [label,title,subtitle] = titles[view];
   $('page-label').textContent=label; $('page-title').textContent=title; $('page-subtitle').textContent=subtitle;
   document.querySelector('.filters').hidden=['ideas','health','wellness'].includes(view);
+  if(view==='health')loadTracker('health');
+  if(view==='wellness')loadTracker('wellness');
   window.scrollTo({top:0,behavior:'smooth'});
+}
+async function loadTracker(kind){
+  const loadedKey=kind==='health'?'healthLoaded':'wellnessLoaded';
+  if(kind==='health'?healthLoaded:wellnessLoaded)return;
+  try{
+    const records=(await api('/api/'+kind)).records;
+    if(kind==='health'){healthRecords=records;healthLoaded=true;}else{wellnessRecords=records;wellnessLoaded=true;}
+    render();
+  }catch(error){notice(error.message,true);}
 }
 function group(items,key) { return items.reduce((counts,item)=>{const value=item[key]||'Unspecified'; counts[value]=(counts[value]||0)+1;return counts;},{}); }
 function sortedCounts(counts) { return Object.entries(counts).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0])); }
@@ -180,7 +191,7 @@ function updateOptions() {
   $('preparer-options').innerHTML=names.map(n=>`<option value="${escapeHtml(n)}"></option>`).join('');
 }
 async function load() {
-  try {const data=await api('/api/meals');meals=data.meals;sortMeals();loaded=true;updateOptions();applyFilters();try{healthRecords=(await api('/api/health')).records;wellnessRecords=(await api('/api/wellness')).records;render();}catch(error){notice('Meals are connected. To save Daily Health and Daily Wellness records, add the two new Firestore collection rules.',true);}
+  try {const data=await api('/api/meals');meals=data.meals;sortMeals();loaded=true;updateOptions();applyFilters();
     if(data.storageMode==='preview'){
       $('connection').textContent='Spreadsheet preview';$('sync-status').textContent='Read-only local preview';
       notice('Spreadsheet preview · Firebase import approval is pending. You can explore your history and meal ideas; changes cannot be saved yet.');
