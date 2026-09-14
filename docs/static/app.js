@@ -4,10 +4,10 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const formatDate = value => new Date(value+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 const icons = {Breakfast:'☀',Lunch:'◒',Dinner:'☾',Snack:'✧'};
-let meals = [], filtered = [], currentView = 'dashboard', page = 0, loaded = false;
+let meals = [], filtered = [], healthRecords = [], wellnessRecords = [], currentView = 'dashboard', page = 0, loaded = false;
 let selectedDay = today();
 let calendarToday = today();
-const titles = {dashboard:['Overview','One day at your table.','Breakfast, lunch, and dinner — together in one daily card.'],journal:['Meal journal','Your daily meal cards.','Move between days or choose a date to see the whole day.'],trends:['Trends','Your family’s food rhythm.','See how meals and preparation change over time.'],ideas:['Meal ideas','A little inspiration for your table.','Simple, colorful ideas to make your everyday meals feel fresh.']};
+const titles = {dashboard:['Overview','One day at your table.','Breakfast, lunch, and dinner — together in one daily card.'],journal:['Meal journal','Your daily meal cards.','Move between days or choose a date to see the whole day.'],trends:['Trends','Your family’s food rhythm.','See how meals and preparation change over time.'],ideas:['Meal ideas','A little inspiration for your table.','Simple, colorful ideas to make your everyday meals feel fresh.'],health:['Daily health','Your daily health check.','Track activity and everyday measurements over time.'],wellness:['Daily wellness','Your daily wellness check.','A simple private record for each day.']};
 
 async function api(path, options = {}) {
   if(window.GatherTransport) return window.GatherTransport.request(path, options);
@@ -26,7 +26,7 @@ function setView(view) {
   document.querySelectorAll('[data-view]').forEach(el=>el.classList.toggle('active',el.dataset.view===view));
   const [label,title,subtitle] = titles[view];
   $('page-label').textContent=label; $('page-title').textContent=title; $('page-subtitle').textContent=subtitle;
-  document.querySelector('.filters').hidden=view==='ideas';
+  document.querySelector('.filters').hidden=['ideas','health','wellness'].includes(view);
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function group(items,key) { return items.reduce((counts,item)=>{const value=item[key]||'Unspecified'; counts[value]=(counts[value]||0)+1;return counts;},{}); }
@@ -64,7 +64,23 @@ function render() {
   $('stats').innerHTML=stats(filtered); $('trend-stats').innerHTML=stats(filtered);
   $('recent').innerHTML=dayCard();
   $('cooks').innerHTML=bars(Object.fromEntries(sortedCounts(group(knownCooks(filtered),'preparer')).slice(0,5)));
-  renderJournal(); renderTrends(); renderIdeas();
+  renderJournal(); renderTrends(); renderIdeas(); renderHealth(); renderWellness();
+}
+function healthFor(date){return healthRecords.find(record=>record.date===date)||{};}
+function wellnessFor(date){return wellnessRecords.find(record=>record.date===date)||{};}
+function renderHealth(){
+  const form=$('health-form');if(!form)return;
+  const current=healthFor(form.elements.date.value||today());
+  if(document.activeElement!==form.elements.date)Object.entries({date:form.elements.date.value||today(),distanceWalked:'',distanceUnit:'miles',bloodPressure:'',bloodSugar:'',bloodSugarUnit:'mg/dL',weight:'',weightUnit:'lb',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
+  const recent=[...healthRecords].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,7);
+  $('health-history').innerHTML=recent.length?`<div class="table-scroll"><table><thead><tr><th>Date</th><th>Walked</th><th>Pressure</th><th>Sugar</th><th>Weight</th></tr></thead><tbody>${recent.map(r=>`<tr><td>${formatDate(r.date)}</td><td>${escapeHtml(r.distanceWalked||'—')} ${escapeHtml(r.distanceWalked?r.distanceUnit:'')}</td><td>${escapeHtml(r.bloodPressure||'—')}</td><td>${escapeHtml(r.bloodSugar||'—')} ${escapeHtml(r.bloodSugar?r.bloodSugarUnit:'')}</td><td>${escapeHtml(r.weight||'—')} ${escapeHtml(r.weight?r.weightUnit:'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No health records saved yet.</div>';
+}
+function renderWellness(){
+  const form=$('wellness-form');if(!form)return;
+  const current=wellnessFor(form.elements.date.value||today());
+  if(document.activeElement!==form.elements.date)Object.entries({date:form.elements.date.value||today(),bowelMovement:'Yes',time:'',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
+  const recent=[...wellnessRecords].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,14);
+  $('wellness-history').innerHTML=recent.length?`<div class="table-scroll"><table><thead><tr><th>Date</th><th>Bowel movement</th><th>Time</th></tr></thead><tbody>${recent.map(r=>`<tr><td>${formatDate(r.date)}</td><td>${escapeHtml(r.bowelMovement)}</td><td>${escapeHtml(r.time||'—')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No wellness checks saved yet.</div>';
 }
 function shiftDate(value,amount) {
   const date=new Date(value+'T12:00:00'); date.setDate(date.getDate()+amount);
@@ -164,7 +180,7 @@ function updateOptions() {
   $('preparer-options').innerHTML=names.map(n=>`<option value="${escapeHtml(n)}"></option>`).join('');
 }
 async function load() {
-  try {const data=await api('/api/meals');meals=data.meals;sortMeals();loaded=true;updateOptions();applyFilters();
+  try {const data=await api('/api/meals');meals=data.meals;sortMeals();loaded=true;updateOptions();applyFilters();try{healthRecords=(await api('/api/health')).records;wellnessRecords=(await api('/api/wellness')).records;render();}catch(error){notice('Meals are connected. To save Daily Health and Daily Wellness records, add the two new Firestore collection rules.',true);}
     if(data.storageMode==='preview'){
       $('connection').textContent='Spreadsheet preview';$('sync-status').textContent='Read-only local preview';
       notice('Spreadsheet preview · Firebase import approval is pending. You can explore your history and meal ideas; changes cannot be saved yet.');
@@ -205,6 +221,9 @@ $('delete-meal').onclick=async()=>{
   catch(error){$('form-error').textContent=error.message;}
   finally{$('delete-meal').disabled=false;$('save-meal').disabled=false;}
 };
+$('health-form').onsubmit=async event=>{event.preventDefault();const form=event.target,data=Object.fromEntries(new FormData(form)),id='health_'+data.date.replaceAll('-','');$('save-health').disabled=true;$('health-error').textContent='';try{const record=await api('/api/health/'+id,{method:'PUT',body:JSON.stringify(data)});healthRecords=healthRecords.filter(item=>item.id!==record.id);healthRecords.push(record);$('health-status').textContent='Saved to Firebase.';renderHealth();notice('Daily health saved to Firebase.');}catch(error){$('health-error').textContent=error.message;}finally{$('save-health').disabled=false;}};
+$('wellness-form').onsubmit=async event=>{event.preventDefault();const form=event.target,data=Object.fromEntries(new FormData(form)),id='wellness_'+data.date.replaceAll('-','');$('save-wellness').disabled=true;$('wellness-error').textContent='';try{const record=await api('/api/wellness/'+id,{method:'PUT',body:JSON.stringify(data)});wellnessRecords=wellnessRecords.filter(item=>item.id!==record.id);wellnessRecords.push(record);$('wellness-status').textContent='Saved to Firebase.';renderWellness();notice('Daily wellness check saved to Firebase.');}catch(error){$('wellness-error').textContent=error.message;}finally{$('save-wellness').disabled=false;}};
+['health-form','wellness-form'].forEach(id=>$(id).addEventListener('change',event=>{if(event.target.name==='date'){id==='health-form'?renderHealth():renderWellness();}}));
 $('logout').onclick=async()=>{try{await api('/api/logout',{method:'POST'});location.href=window.GatherTransport?'./':'/login';}catch(error){notice(error.message,true);}};
 if(window.GatherTransport) document.querySelector('a[href="/api/export"]').onclick=async event=>{event.preventDefault();try{await window.GatherTransport.exportCSV();}catch(error){notice(error.message,true);}};
 $('today-label').textContent=new Date().toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});

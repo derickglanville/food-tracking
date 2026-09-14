@@ -4,6 +4,7 @@ window.GatherTransport=(()=>{
  const allowedEmail='dglanville@gmail.com';
  const databaseRoot=`https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents`;
  const root=`${databaseRoot}/food_tracker_meals`;
+ const collectionRoot=name=>`${databaseRoot}/${name}`;
  const documentRoot=`projects/${config.projectId}/databases/(default)/documents/food_tracker_meals`;
  const enc=new TextEncoder(),dec=new TextDecoder();let token='',oldKey=null;
  const bytes=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
@@ -32,10 +33,10 @@ window.GatherTransport=(()=>{
    });
    return user ? acceptUser(user) : false;
  }
- async function remote(method,path='',params={},body){
+ async function remote(method,path='',params={},body,collection='food_tracker_meals'){
    if(!token)throw Error('Sign in with Google before continuing.');
    token=await authInstance().currentUser.getIdToken();
-   const url=new URL(root+path);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
+   const url=new URL((collection==='food_tracker_meals'?root:collectionRoot(collection))+path);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
    let response;try{response=await fetch(url,{method,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},...(body?{body:JSON.stringify(body)}:{})});}
    catch{throw Error('Cannot reach Firebase. Your change has not been confirmed. Check your connection.');}
    if(!response.ok)throw Error(`Firebase returned ${response.status}. Check Google sign-in and Firestore access.`);
@@ -44,7 +45,7 @@ window.GatherTransport=(()=>{
  function fieldValue(value){return value.stringValue??value.booleanValue??value.integerValue??value.doubleValue??null;}
  function documentValue(doc){const entry={};for(const [name,value] of Object.entries(doc.fields||{}))entry[name]=fieldValue(value);entry.id=doc.name.split('/').pop();return entry;}
  function typedFields(entry){const fields={};for(const [name,value] of Object.entries(entry)){if(name==='id')continue;fields[name]=typeof value==='boolean'?{booleanValue:value}:{stringValue:String(value)};}return fields;}
- async function rawList(){const entries=[];let pageToken='';do{const page=await remote('GET','',{pageSize:1000,...(pageToken?{pageToken}:{})});entries.push(...(page.documents||[]));pageToken=page.nextPageToken;}while(pageToken);return entries;}
+ async function rawList(collection='food_tracker_meals'){const entries=[];let pageToken='';do{const page=await remote('GET','',{pageSize:1000,...(pageToken?{pageToken}:{})},undefined,collection);entries.push(...(page.documents||[]));pageToken=page.nextPageToken;}while(pageToken);return entries;}
  async function needsMigration(){return (await rawList()).some(doc=>documentValue(doc).schema==='gather-aes-gcm-v1');}
  async function oldEncryptionKey(code){const material=await crypto.subtle.importKey('raw',enc.encode(code),'PBKDF2',false,['deriveKey']);return crypto.subtle.deriveKey({name:'PBKDF2',salt:enc.encode('gather-v1|glanville-issue-tracker|food_tracker_meals'),iterations:210000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['decrypt']);}
  async function migrate(code,progress=()=>{}){
@@ -55,7 +56,17 @@ window.GatherTransport=(()=>{
  }
  function validate(data){const limits={date:10,mealType:20,meal:500,derickMeal:500,preparer:120,preparation:30,notes:1000,source:250};const result={};for(const [field,max] of Object.entries(limits)){const value=data[field]??'';if(typeof value!=='string'||value.length>max)throw Error(`Invalid ${field}.`);result[field]=value.trim();}if(!/^\d{4}-\d{2}-\d{2}$/.test(result.date)||isNaN(Date.parse(result.date))||new Date(result.date).toISOString().slice(0,10)!==result.date)throw Error('Choose a valid date.');if(!['Breakfast','Lunch','Dinner','Snack'].includes(result.mealType))throw Error('Choose a meal type.');if(!['Home cooked','Bought','Leftovers','Unspecified'].includes(result.preparation))throw Error('Choose a preparation type.');if(!result.meal&&!result.derickMeal)throw Error('Enter a meal for at least one person.');result.needsReview=!!data.needsReview;return result;}
  async function list(){const entries=(await rawList()).map(documentValue);if(entries.some(entry=>entry.schema==='gather-aes-gcm-v1'))throw Error('Migration required before the journal can open.');return entries;}
- async function request(path,options={}){const method=options.method||'GET';if(path==='/api/logout'){token='';await firebase.auth().signOut();return {ok:true};}if(path==='/api/import-summary'){const response=await fetch('./import-summary.json');return response.json();}if(path==='/api/meals'&&method==='GET')return {meals:await list(),storageMode:'firebase'};const id=path.startsWith('/api/meals/')?path.split('/').pop():crypto.randomUUID().replaceAll('-','');if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw Error('Invalid meal identifier.');if(method==='DELETE'){await remote('DELETE','/'+id);return {ok:true};}if(method==='POST'||method==='PUT'){const entry={...validate(JSON.parse(options.body)),id};if(method==='POST')entry.source='Manual entry';await remote('PATCH','/'+id,{'currentDocument.exists':method==='POST'?'false':'true'},{fields:typedFields(entry)});return entry;}throw Error('Unsupported operation.');}
+ async function listTracker(collection){return (await rawList(collection)).map(documentValue);}
+ function validateTracker(data,kind){
+   const date=String(data.date||'').trim();
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(Date.parse(date)))throw Error('Choose a valid date.');
+   if(kind==='health')return {date,distanceWalked:String(data.distanceWalked||'').trim().slice(0,30),distanceUnit:data.distanceUnit==='km'?'km':'miles',bloodPressure:String(data.bloodPressure||'').trim().slice(0,30),bloodSugar:String(data.bloodSugar||'').trim().slice(0,30),bloodSugarUnit:data.bloodSugarUnit==='mmol/L'?'mmol/L':'mg/dL',weight:String(data.weight||'').trim().slice(0,30),weightUnit:data.weightUnit==='kg'?'kg':'lb'};
+   const bowelMovement=data.bowelMovement==='Yes'?'Yes':'No',time=String(data.time||'').trim();
+   if(time&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))throw Error('Choose a valid time.');
+   return {date,bowelMovement,time};
+ }
+ async function saveTracker(collection,id,data){const entry={...data,id};await remote('PATCH','/'+id,{'currentDocument.exists':'true'},{fields:typedFields(entry)},collection);return entry;}
+ async function request(path,options={}){const method=options.method||'GET';if(path==='/api/logout'){token='';await firebase.auth().signOut();return {ok:true};}if(path==='/api/import-summary'){const response=await fetch('./import-summary.json');return response.json();}if(path==='/api/meals'&&method==='GET')return {meals:await list(),storageMode:'firebase'};for(const [kind,collection] of Object.entries({health:'food_tracker_health',wellness:'food_tracker_wellness'})){if(path==='/api/'+kind&&method==='GET')return {records:await listTracker(collection)};if(path.startsWith('/api/'+kind+'/')&&method==='PUT'){const id=path.split('/').pop();if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw Error('Invalid record identifier.');return saveTracker(collection,id,validateTracker(JSON.parse(options.body),kind));}}const id=path.startsWith('/api/meals/')?path.split('/').pop():crypto.randomUUID().replaceAll('-','');if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw Error('Invalid meal identifier.');if(method==='DELETE'){await remote('DELETE','/'+id);return {ok:true};}if(method==='POST'||method==='PUT'){const entry={...validate(JSON.parse(options.body)),id};if(method==='POST')entry.source='Manual entry';await remote('PATCH','/'+id,{'currentDocument.exists':method==='POST'?'false':'true'},{fields:typedFields(entry)});return entry;}throw Error('Unsupported operation.');}
  async function exportCSV(){const fields=['date','mealType','meal','derickMeal','preparer','preparation','notes','source'];const cell=value=>{let text=String(value??'');if(/^[=+\-@\t\r]/.test(text))text="'"+text;return '"'+text.replaceAll('"','""')+'"';};const entries=await list();entries.sort((a,b)=>b.date.localeCompare(a.date));const csv='\uFEFF'+[fields.map(cell).join(','),...entries.map(e=>fields.map(f=>cell(e[f])).join(','))].join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='meal-history.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
  return {signIn,restoreSession,needsMigration,migrate,request,exportCSV};
 })();
