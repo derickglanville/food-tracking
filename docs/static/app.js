@@ -88,8 +88,9 @@ function renderHealth(){
 }
 function renderWellness(){
   const form=$('wellness-form');if(!form)return;
-  const current=wellnessFor(form.elements.date.value||today());
-  Object.entries({date:form.elements.date.value||today(),bowelMovement:'',time:'',notes:'',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
+  const date=form.elements.date.value||today(),current=wellnessFor(date);
+  Object.entries({date,bowelMovement:'',time:'',notes:'',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
+  $('wellness-next').disabled=date>=today();
   const days=Array.from({length:7},(_,index)=>shiftDate(today(),index-6));
   $('wellness-week-grid').innerHTML=days.map(date=>{const record=wellnessFor(date),label=new Date(date+'T12:00:00').toLocaleDateString(undefined,{weekday:'short'});return `<article class="wellness-day ${record.bowelMovement==='Yes'?'wellness-yes':record.bowelMovement==='No'?'wellness-no':'wellness-empty'}"><span>${label}</span><b>${record.bowelMovement||'—'}</b><small>${new Date(date+'T12:00:00').toLocaleDateString(undefined,{month:'numeric',day:'numeric'})}</small></article>`;}).join('');
   const recent=[...wellnessRecords].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,14);
@@ -249,6 +250,11 @@ $('meal-form').addEventListener('change',()=>scheduleAutosave($('meal-form'),()=
 ['health-form','wellness-form'].forEach(id=>$(id).addEventListener('change',event=>{if(event.target.name==='date'){id==='health-form'?renderHealth():renderWellness();return;}scheduleAutosave($(id),()=>true);}));
 ['health-form','wellness-form'].forEach(id=>$(id).addEventListener('input',event=>{if(event.target.name!=='date')scheduleAutosave($(id),()=>true);}));
 $('health-status').textContent='Autosave is on.';$('wellness-status').textContent='Autosave is on.';
+function setWellnessDate(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;$('wellness-form').elements.namedItem('date').value=date;renderWellness();}
+$('wellness-previous').onclick=()=>setWellnessDate(shiftDate($('wellness-form').elements.namedItem('date').value||today(),-1));
+$('wellness-next').onclick=()=>setWellnessDate(shiftDate($('wellness-form').elements.namedItem('date').value||today(),1));
+$('wellness-today').onclick=()=>setWellnessDate(today());
+$('refresh-wellness').onclick=async()=>{const button=$('refresh-wellness');button.disabled=true;try{wellnessRecords=(await api('/api/wellness/refresh')).records;wellnessLoaded=true;renderWellness();notice('Wellness history refreshed from Firebase.');}catch(error){$('wellness-error').textContent=error.message;}finally{button.disabled=false;}};
 $('wellness-import').onchange=async event=>{
   const file=event.target.files[0];if(!file)return;
   $('wellness-error').textContent='';$('save-wellness').disabled=true;
