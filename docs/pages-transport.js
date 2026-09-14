@@ -70,7 +70,27 @@ window.GatherTransport=(()=>{
    oldKey=null;
  }
  function validate(data){const limits={date:10,mealType:20,meal:500,derickMeal:500,preparer:120,preparation:30,notes:1000,source:250};const result={};for(const [field,max] of Object.entries(limits)){const value=data[field]??'';if(typeof value!=='string'||value.length>max)throw Error(`Invalid ${field}.`);result[field]=value.trim();}if(!/^\d{4}-\d{2}-\d{2}$/.test(result.date)||isNaN(Date.parse(result.date))||new Date(result.date).toISOString().slice(0,10)!==result.date)throw Error('Choose a valid date.');if(!['Breakfast','Lunch','Dinner','Snack'].includes(result.mealType))throw Error('Choose a meal type.');if(!['Home cooked','Bought','Leftovers','Unspecified'].includes(result.preparation))throw Error('Choose a preparation type.');if(!result.meal&&!result.derickMeal)throw Error('Enter a meal for at least one person.');result.needsReview=!!data.needsReview;return result;}
- async function list(){const cached=cachedEntries('food_tracker_meals');const entries=cached||(await rawList()).map(documentValue);if(entries.some(entry=>entry.schema==='gather-aes-gcm-v1'))throw Error('Migration required before the journal can open.');if(!cached)writeCachedEntries('food_tracker_meals',entries);return entries;}
+ async function entriesForDate(date){
+   if(!token)throw Error('Sign in with Google before continuing.');
+   const response=await fetch(`${databaseRoot}:runQuery`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({structuredQuery:{from:[{collectionId:'food_tracker_meals'}],where:{fieldFilter:{field:{fieldPath:'date'},op:'EQUAL',value:{stringValue:date}}}}})});
+   if(!response.ok)throw Error(`Firebase returned ${response.status}. Check Google sign-in and Firestore access.`);
+   return (await response.json()).filter(row=>row.document).map(row=>documentValue(row.document));
+ }
+ function localDate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+ async function list(){
+   const cached=cachedEntries('food_tracker_meals');
+   let entries;
+   if(cached){
+     const date=localDate(), freshToday=await entriesForDate(date);
+     entries=[...cached.filter(entry=>entry.date!==date),...freshToday];
+     writeCachedEntries('food_tracker_meals',entries);
+   }else{
+     entries=(await rawList()).map(documentValue);
+     writeCachedEntries('food_tracker_meals',entries);
+   }
+   if(entries.some(entry=>entry.schema==='gather-aes-gcm-v1'))throw Error('Migration required before the journal can open.');
+   return entries;
+ }
  async function listTracker(collection,refresh=false){const cached=refresh?null:cachedEntries(collection);if(cached&&cached.length)return cached;const entries=(await rawList(collection)).map(documentValue);writeCachedEntries(collection,entries);return entries;}
  function validateTracker(data,kind){
    const date=String(data.date||'').trim();
