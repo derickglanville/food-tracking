@@ -89,9 +89,9 @@ function renderHealth(){
 function renderWellness(){
   const form=$('wellness-form');if(!form)return;
   const current=wellnessFor(form.elements.date.value||today());
-  if(document.activeElement!==form.elements.date)Object.entries({date:form.elements.date.value||today(),bowelMovement:'Yes',time:'',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
+  if(document.activeElement!==form.elements.date)Object.entries({date:form.elements.date.value||today(),bowelMovement:'Yes',time:'',notes:'',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
   const recent=[...wellnessRecords].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,14);
-  $('wellness-history').innerHTML=recent.length?`<div class="table-scroll"><table><thead><tr><th>Date</th><th>Bowel movement</th><th>Time</th></tr></thead><tbody>${recent.map(r=>`<tr><td>${formatDate(r.date)}</td><td>${escapeHtml(r.bowelMovement)}</td><td>${escapeHtml(r.time||'—')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No wellness checks saved yet.</div>';
+  $('wellness-history').innerHTML=recent.length?`<div class="table-scroll"><table><thead><tr><th>Date</th><th>Bowel movement</th><th>Time</th><th>Notes</th></tr></thead><tbody>${recent.map(r=>`<tr><td>${formatDate(r.date)}</td><td>${escapeHtml(r.bowelMovement)}</td><td>${escapeHtml(r.time||'—')}</td><td>${escapeHtml(r.notes||'—')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No wellness checks saved yet.</div>';
 }
 function shiftDate(value,amount) {
   const date=new Date(value+'T12:00:00'); date.setDate(date.getDate()+amount);
@@ -235,6 +235,17 @@ $('delete-meal').onclick=async()=>{
 $('health-form').onsubmit=async event=>{event.preventDefault();const form=event.target,data=Object.fromEntries(new FormData(form)),id='health_'+data.date.replaceAll('-','');$('save-health').disabled=true;$('health-error').textContent='';try{const record=await api('/api/health/'+id,{method:'PUT',body:JSON.stringify(data)});healthRecords=healthRecords.filter(item=>item.id!==record.id);healthRecords.push(record);$('health-status').textContent='Saved to Firebase.';renderHealth();notice('Daily health saved to Firebase.');}catch(error){$('health-error').textContent=error.message;}finally{$('save-health').disabled=false;}};
 $('wellness-form').onsubmit=async event=>{event.preventDefault();const form=event.target,data=Object.fromEntries(new FormData(form)),id='wellness_'+data.date.replaceAll('-','');$('save-wellness').disabled=true;$('wellness-error').textContent='';try{const record=await api('/api/wellness/'+id,{method:'PUT',body:JSON.stringify(data)});wellnessRecords=wellnessRecords.filter(item=>item.id!==record.id);wellnessRecords.push(record);$('wellness-status').textContent='Saved to Firebase.';renderWellness();notice('Daily wellness check saved to Firebase.');}catch(error){$('wellness-error').textContent=error.message;}finally{$('save-wellness').disabled=false;}};
 ['health-form','wellness-form'].forEach(id=>$(id).addEventListener('change',event=>{if(event.target.name==='date'){id==='health-form'?renderHealth():renderWellness();}}));
+$('wellness-import').onchange=async event=>{
+  const file=event.target.files[0];if(!file)return;
+  $('wellness-error').textContent='';$('save-wellness').disabled=true;
+  try{
+    const payload=JSON.parse(await file.text()),records=Array.isArray(payload)?payload:payload.records;
+    const imported=(await api('/api/wellness/import',{method:'POST',body:JSON.stringify({records})})).records;
+    wellnessRecords=[...wellnessRecords.filter(old=>!imported.some(entry=>entry.id===old.id)),...imported];wellnessLoaded=true;renderWellness();
+    notice(`${imported.length} historical wellness records saved to Firebase.`);
+  }catch(error){$('wellness-error').textContent=error.message;}
+  finally{$('save-wellness').disabled=false;event.target.value='';}
+};
 $('logout').onclick=async()=>{try{await api('/api/logout',{method:'POST'});location.href=window.GatherTransport?'./':'/login';}catch(error){notice(error.message,true);}};
 if(window.GatherTransport) document.querySelector('a[href="/api/export"]').onclick=async event=>{event.preventDefault();try{await window.GatherTransport.exportCSV();}catch(error){notice(error.message,true);}};
 $('today-label').textContent=new Date().toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
