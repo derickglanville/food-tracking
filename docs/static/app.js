@@ -131,7 +131,7 @@ function journalHistoryGrid(){
   return `<section class="journal-history"><div class="panel-head"><div><h2>Previous daily meals</h2><p class="muted">Choose a card to open that day’s meal record.</p></div></div><div class="journal-day-grid">${dates.map(date=>{
     const entries=meals.filter(entry=>entry.date===date), label=new Date(date+'T12:00:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
     const summary=['Breakfast','Lunch','Dinner'].map(type=>{const entry=entries.find(item=>item.mealType===type);return `<li><span>${icons[type]} ${type}</span><b>${escapeHtml(entry?(entry.meal||entry.derickMeal||'Recorded'):'—')}</b></li>`;}).join('');
-    return `<button type="button" class="journal-day ${entries.length?'has-meals':''}" data-journal-day="${date}" aria-label="Open meals for ${label}"><header><span>${label}</span><strong>${entries.length}/3</strong></header><ul>${summary}</ul></button>`;
+    return `<button type="button" class="journal-day ${entries.length?'has-meals':''}" data-journal-day="${date}" aria-label="Open meals for ${label}"><header><span class="journal-day-date">${label}</span><strong class="journal-day-count">${entries.length}/3</strong></header><ul>${summary}</ul></button>`;
   }).join('')}</div></section>`;
 }
 function renderJournal() {
