@@ -77,7 +77,7 @@ window.GatherTransport=(()=>{
    const date=String(data.date||'').trim();
    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(Date.parse(date)))throw Error('Choose a valid date.');
    if(kind==='health')return {date,distanceWalked:String(data.distanceWalked||'').trim().slice(0,30),distanceUnit:data.distanceUnit==='km'?'km':'miles',bloodPressure:String(data.bloodPressure||'').trim().slice(0,30),bloodSugar:String(data.bloodSugar||'').trim().slice(0,30),bloodSugarUnit:data.bloodSugarUnit==='mmol/L'?'mmol/L':'mg/dL',weight:String(data.weight||'').trim().slice(0,30),weightUnit:data.weightUnit==='kg'?'kg':'lb'};
-   const bowelMovement=data.bowelMovement==='Yes'?'Yes':'No',time=String(data.time||'').trim();
+   const bowelMovement=['Yes','No'].includes(data.bowelMovement)?data.bowelMovement:'',time=String(data.time||'').trim();
    if(time&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))throw Error('Choose a valid time.');
    return {date,bowelMovement,time,notes:String(data.notes||'').trim().slice(0,300)};
  }
