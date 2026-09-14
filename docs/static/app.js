@@ -220,12 +220,20 @@ setInterval(checkNewDay,30000);
 window.addEventListener('focus',checkNewDay);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkNewDay();});
 $('close-dialog').onclick=()=>$('meal-dialog').close();
+const autosaveTimers={};
+function scheduleAutosave(form,canSave){
+  clearTimeout(autosaveTimers[form.id]);
+  if(!canSave())return;
+  autosaveTimers[form.id]=setTimeout(()=>{if(form.dataset.saving!=='true'&&canSave()){form.dataset.automatic='true';form.requestSubmit();}},900);
+}
 $('meal-form').onsubmit=async event=>{
-  event.preventDefault();const form=event.target,data=Object.fromEntries(new FormData(form));data.needsReview=form.elements.namedItem('needsReview').checked;
+  event.preventDefault();const form=event.target;if(form.dataset.saving==='true')return;form.dataset.saving='true';
+  const automatic=form.dataset.automatic==='true';delete form.dataset.automatic;
+  const data=Object.fromEntries(new FormData(form));data.needsReview=form.elements.namedItem('needsReview').checked;
   $('save-meal').disabled=true;$('delete-meal').disabled=true;$('form-error').textContent='';
-  try {const entry=await api('/api/meals'+(data.id?'/'+data.id:''),{method:data.id?'PUT':'POST',body:JSON.stringify(data)});meals=meals.filter(e=>e.id!==entry.id);meals.push(entry);selectedDay=entry.date;sortMeals();updateOptions();applyFilters();$('meal-dialog').close();notice('Meal saved to Firebase.');}
+  try {const entry=await api('/api/meals'+(data.id?'/'+data.id:''),{method:data.id?'PUT':'POST',body:JSON.stringify(data)});form.elements.namedItem('id').value=entry.id;meals=meals.filter(e=>e.id!==entry.id);meals.push(entry);selectedDay=entry.date;sortMeals();updateOptions();applyFilters();if(!automatic)$('meal-dialog').close();notice(automatic?'Meal saved automatically.':'Meal saved to Firebase.');}
   catch(error){$('form-error').textContent=error.message;}
-  finally{$('save-meal').disabled=false;$('delete-meal').disabled=false;}
+  finally{delete form.dataset.saving;$('save-meal').disabled=false;$('delete-meal').disabled=false;}
 };
 $('delete-meal').onclick=async()=>{
   if(!confirm('Delete this meal entry from Firebase?'))return;
@@ -234,9 +242,13 @@ $('delete-meal').onclick=async()=>{
   catch(error){$('form-error').textContent=error.message;}
   finally{$('delete-meal').disabled=false;$('save-meal').disabled=false;}
 };
-$('health-form').onsubmit=async event=>{event.preventDefault();const form=event.target,data=Object.fromEntries(new FormData(form)),id='health_'+data.date.replaceAll('-','');$('save-health').disabled=true;$('health-error').textContent='';try{const record=await api('/api/health/'+id,{method:'PUT',body:JSON.stringify(data)});healthRecords=healthRecords.filter(item=>item.id!==record.id);healthRecords.push(record);$('health-status').textContent='Saved to Firebase.';renderHealth();notice('Daily health saved to Firebase.');}catch(error){$('health-error').textContent=error.message;}finally{$('save-health').disabled=false;}};
-$('wellness-form').onsubmit=async event=>{event.preventDefault();const form=event.target,data=Object.fromEntries(new FormData(form)),id='wellness_'+data.date.replaceAll('-','');$('save-wellness').disabled=true;$('wellness-error').textContent='';try{const record=await api('/api/wellness/'+id,{method:'PUT',body:JSON.stringify(data)});wellnessRecords=wellnessRecords.filter(item=>item.id!==record.id);wellnessRecords.push(record);$('wellness-status').textContent='Saved to Firebase.';renderWellness();notice('Daily wellness check saved to Firebase.');}catch(error){$('wellness-error').textContent=error.message;}finally{$('save-wellness').disabled=false;}};
-['health-form','wellness-form'].forEach(id=>$(id).addEventListener('change',event=>{if(event.target.name==='date'){id==='health-form'?renderHealth():renderWellness();}}));
+$('health-form').onsubmit=async event=>{event.preventDefault();const form=event.target;if(form.dataset.saving==='true')return;form.dataset.saving='true';const automatic=form.dataset.automatic==='true';delete form.dataset.automatic;const data=Object.fromEntries(new FormData(form)),id='health_'+data.date.replaceAll('-','');$('save-health').disabled=true;$('health-error').textContent='';try{const record=await api('/api/health/'+id,{method:'PUT',body:JSON.stringify(data)});healthRecords=healthRecords.filter(item=>item.id!==record.id);healthRecords.push(record);$('health-status').textContent=automatic?'Saved automatically.':'Saved to Firebase.';renderHealth();if(!automatic)notice('Daily health saved to Firebase.');}catch(error){$('health-error').textContent=error.message;}finally{delete form.dataset.saving;$('save-health').disabled=false;}};
+$('wellness-form').onsubmit=async event=>{event.preventDefault();const form=event.target;if(form.dataset.saving==='true')return;form.dataset.saving='true';const automatic=form.dataset.automatic==='true';delete form.dataset.automatic;const data=Object.fromEntries(new FormData(form)),id='wellness_'+data.date.replaceAll('-','');$('save-wellness').disabled=true;$('wellness-error').textContent='';try{const record=await api('/api/wellness/'+id,{method:'PUT',body:JSON.stringify(data)});wellnessRecords=wellnessRecords.filter(item=>item.id!==record.id);wellnessRecords.push(record);$('wellness-status').textContent=automatic?'Saved automatically.':'Saved to Firebase.';renderWellness();if(!automatic)notice('Daily wellness check saved to Firebase.');}catch(error){$('wellness-error').textContent=error.message;}finally{delete form.dataset.saving;$('save-wellness').disabled=false;}};
+$('meal-form').addEventListener('input',()=>scheduleAutosave($('meal-form'),()=>{const form=$('meal-form');return !!(form.elements.namedItem('meal').value.trim()||form.elements.namedItem('derickMeal').value.trim());}));
+$('meal-form').addEventListener('change',()=>scheduleAutosave($('meal-form'),()=>{const form=$('meal-form');return !!(form.elements.namedItem('meal').value.trim()||form.elements.namedItem('derickMeal').value.trim());}));
+['health-form','wellness-form'].forEach(id=>$(id).addEventListener('change',event=>{if(event.target.name==='date'){id==='health-form'?renderHealth():renderWellness();return;}scheduleAutosave($(id),()=>true);}));
+['health-form','wellness-form'].forEach(id=>$(id).addEventListener('input',event=>{if(event.target.name!=='date')scheduleAutosave($(id),()=>true);}));
+$('health-status').textContent='Autosave is on.';$('wellness-status').textContent='Autosave is on.';
 $('wellness-import').onchange=async event=>{
   const file=event.target.files[0];if(!file)return;
   $('wellness-error').textContent='';$('save-wellness').disabled=true;
