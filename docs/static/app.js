@@ -7,6 +7,7 @@ const icons = {Breakfast:'☀',Lunch:'◒',Dinner:'☾',Snack:'✧'};
 let meals = [], filtered = [], healthRecords = [], wellnessRecords = [], healthLoaded = false, wellnessLoaded = false, currentView = 'dashboard', page = 0, loaded = false;
 let selectedDay = today();
 let lastTodayRefresh = 0;
+const checkedMealDays = new Set();
 let calendarToday = today();
 const titles = {dashboard:['Overview','One day at your table.','Breakfast, lunch, and dinner — together in one daily card.'],journal:['Meal journal','Your daily meal cards.','Move between days or choose a date to see the whole day.'],trends:['Trends','Your family’s food rhythm.','See how meals and preparation change over time.'],ideas:['Meal ideas','A little inspiration for your table.','Simple, colorful ideas to make your everyday meals feel fresh.'],health:['Daily health','Your daily health check.','Track activity and everyday measurements over time.'],wellness:['Daily wellness','Your daily wellness check.','A simple private record for each day.']};
 
@@ -139,11 +140,17 @@ function renderJournal() {
   $('journal-count').textContent=`${filtered.length.toLocaleString()} meal occasions · grouped by day`;
   $('journal-list').innerHTML=dayCard()+journalHistoryGrid();
 }
+async function loadMealDay(value){
+  if(checkedMealDays.has(value))return;
+  checkedMealDays.add(value);
+  try{const data=await api('/api/meals/date/'+value);meals=[...meals.filter(entry=>entry.date!==value),...data.meals];sortMeals();updateOptions();applyFilters();}
+  catch(error){checkedMealDays.delete(value);notice(error.message,true);}
+}
 function goToDay(value){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(value)||isNaN(Date.parse(value)))return;
   selectedDay=value;
   $('search').value='';$('period').value='all';$('type-filter').value='';$('preparer-filter').value='';
-  applyFilters();
+  applyFilters();loadMealDay(value);
 }
 function checkNewDay(){
   const current=today();if(current===calendarToday)return;
@@ -204,7 +211,7 @@ function updateOptions() {
   $('preparer-options').innerHTML=names.map(n=>`<option value="${escapeHtml(n)}"></option>`).join('');
 }
 function applyMeals(data){
-  meals=data.meals;sortMeals();loaded=true;updateOptions();applyFilters();
+  meals=data.meals;meals.forEach(entry=>checkedMealDays.add(entry.date));checkedMealDays.add(today());sortMeals();loaded=true;updateOptions();applyFilters();
 }
 async function load() {
   try {const data=await api('/api/meals');applyMeals(data);

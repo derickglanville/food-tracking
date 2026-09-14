@@ -61,6 +61,17 @@ window.GatherTransport=(()=>{
  function documentValue(doc){const entry={};for(const [name,value] of Object.entries(doc.fields||{}))entry[name]=fieldValue(value);entry.id=doc.name.split('/').pop();return entry;}
  function typedFields(entry){const fields={};for(const [name,value] of Object.entries(entry)){if(name==='id')continue;fields[name]=typeof value==='boolean'?{booleanValue:value}:{stringValue:String(value)};}return fields;}
  async function rawList(collection='food_tracker_meals'){const entries=[];let pageToken='';do{const page=await remote('GET','',{pageSize:1000,...(pageToken?{pageToken}:{})},undefined,collection);entries.push(...(page.documents||[]));pageToken=page.nextPageToken;}while(pageToken);return entries;}
+ function localDate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+ function daysBefore(value,count){const d=new Date(value+'T12:00:00');d.setDate(d.getDate()-count);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+ async function dateEntries(collection,start,end){
+   if(!token)throw Error('Sign in with Google before continuing.');
+   const filters=[];if(start)filters.push({fieldFilter:{field:{fieldPath:'date'},op:'GREATER_THAN_OR_EQUAL',value:{stringValue:start}}});if(end)filters.push({fieldFilter:{field:{fieldPath:'date'},op:'LESS_THAN_OR_EQUAL',value:{stringValue:end}}});
+   const structuredQuery={from:[{collectionId:collection}],orderBy:[{field:{fieldPath:'date'},direction:'DESCENDING'}],limit:500};
+   if(filters.length===1)structuredQuery.where=filters[0];else if(filters.length>1)structuredQuery.where={compositeFilter:{op:'AND',filters}};
+   const response=await fetch(`${databaseRoot}:runQuery`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({structuredQuery})});
+   if(!response.ok)throw Error(`Firebase returned ${response.status}. Check Google sign-in and Firestore access.`);
+   return (await response.json()).filter(row=>row.document).map(row=>documentValue(row.document));
+ }
  async function needsMigration(){
   if(!token)throw Error('Sign in with Google before continuing.');
   const response=await fetch(`${databaseRoot}:runQuery`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({structuredQuery:{from:[{collectionId:'food_tracker_meals'}],where:{fieldFilter:{field:{fieldPath:'schema'},op:'EQUAL',value:{stringValue:'gather-aes-gcm-v1'}}},limit:1}})});
@@ -75,28 +86,17 @@ window.GatherTransport=(()=>{
    oldKey=null;
  }
  function validate(data){const limits={date:10,mealType:20,meal:500,derickMeal:500,preparer:120,preparation:30,notes:1000,source:250};const result={};for(const [field,max] of Object.entries(limits)){const value=data[field]??'';if(typeof value!=='string'||value.length>max)throw Error(`Invalid ${field}.`);result[field]=value.trim();}if(!/^\d{4}-\d{2}-\d{2}$/.test(result.date)||isNaN(Date.parse(result.date))||new Date(result.date).toISOString().slice(0,10)!==result.date)throw Error('Choose a valid date.');if(!['Breakfast','Lunch','Dinner','Snack'].includes(result.mealType))throw Error('Choose a meal type.');if(!['Home cooked','Bought','Leftovers','Unspecified'].includes(result.preparation))throw Error('Choose a preparation type.');if(!result.meal&&!result.derickMeal)throw Error('Enter a meal for at least one person.');result.needsReview=!!data.needsReview;return result;}
- async function entriesForDate(date){
-   if(!token)throw Error('Sign in with Google before continuing.');
-   const response=await fetch(`${databaseRoot}:runQuery`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({structuredQuery:{from:[{collectionId:'food_tracker_meals'}],where:{fieldFilter:{field:{fieldPath:'date'},op:'EQUAL',value:{stringValue:date}}}}})});
-   if(!response.ok)throw Error(`Firebase returned ${response.status}. Check Google sign-in and Firestore access.`);
-   return (await response.json()).filter(row=>row.document).map(row=>documentValue(row.document));
- }
- function localDate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+ async function entriesForDate(date){return dateEntries('food_tracker_meals',date,date);}
  async function list(){
-   const cached=cachedEntries('food_tracker_meals');
-   let entries;
-   if(cached){
-     const date=localDate(), freshToday=await entriesForDate(date);
-     entries=[...cached.filter(entry=>entry.date!==date),...freshToday];
-     writeCachedEntries('food_tracker_meals',entries);
-   }else{
-     entries=(await rawList()).map(documentValue);
-     writeCachedEntries('food_tracker_meals',entries);
-   }
+   const cached=cachedEntries('food_tracker_meals'),date=localDate();
+   const base=cached||await dateEntries('food_tracker_meals',daysBefore(date,90),date);
+   const freshToday=await entriesForDate(date);
+   const entries=[...base.filter(entry=>entry.date!==date),...freshToday];
+   writeCachedEntries('food_tracker_meals',entries);
    if(entries.some(entry=>entry.schema==='gather-aes-gcm-v1'))throw Error('Migration required before the journal can open.');
    return entries;
  }
- async function listTracker(collection,refresh=false){const cached=refresh?null:cachedEntries(collection);if(cached&&cached.length)return cached;const entries=(await rawList(collection)).map(documentValue);writeCachedEntries(collection,entries);return entries;}
+ async function listTracker(collection,refresh=false){const cached=refresh?null:cachedEntries(collection);if(cached&&cached.length)return cached;const date=localDate(),entries=await dateEntries(collection,daysBefore(date,90),date);writeCachedEntries(collection,entries);return entries;}
  function validateTracker(data,kind){
    const date=String(data.date||'').trim();
    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(Date.parse(date)))throw Error('Choose a valid date.');
@@ -116,7 +116,7 @@ window.GatherTransport=(()=>{
    }
    const cached=cachedEntries(collection)||[];writeCachedEntries(collection,[...cached.filter(old=>!entries.some(entry=>entry.id===old.id)),...entries]);return entries;
  }
- async function request(path,options={}){const method=options.method||'GET';if(path==='/api/logout'){token='';await firebase.auth().signOut();return {ok:true};}if(path==='/api/import-summary'){const response=await fetch('./import-summary.json');return response.json();}if(path==='/api/meals'&&method==='GET')return {meals:await list(),storageMode:'firebase'};if(path==='/api/meals/refresh-today'&&method==='GET')return {meals:await list(),storageMode:'firebase'};for(const [kind,collection] of Object.entries({health:'food_tracker_health',wellness:'food_tracker_wellness'})){if(path==='/api/'+kind+'/refresh'&&method==='GET')return {records:await listTracker(collection,true)};if(path==='/api/'+kind&&method==='GET')return {records:await listTracker(collection)};if(path==='/api/'+kind+'/import'&&method==='POST')return {records:await importTracker(collection,kind,JSON.parse(options.body).records)};if(path.startsWith('/api/'+kind+'/')&&method==='PUT'){const id=path.split('/').pop();if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw Error('Invalid record identifier.');return saveTracker(collection,id,validateTracker(JSON.parse(options.body),kind));}}const id=path.startsWith('/api/meals/')?path.split('/').pop():crypto.randomUUID().replaceAll('-','');if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw Error('Invalid meal identifier.');if(method==='DELETE'){await remote('DELETE','/'+id);removeCachedEntry('food_tracker_meals',id);return {ok:true};}if(method==='POST'||method==='PUT'){const entry={...validate(JSON.parse(options.body)),id};if(method==='POST')entry.source='Manual entry';await remote('PATCH','/'+id,{'currentDocument.exists':method==='POST'?'false':'true'},{fields:typedFields(entry)});updateCachedEntry('food_tracker_meals',entry);return entry;}throw Error('Unsupported operation.');}
+ async function request(path,options={}){const method=options.method||'GET';if(path==='/api/logout'){token='';await firebase.auth().signOut();return {ok:true};}if(path==='/api/import-summary'){const response=await fetch('./import-summary.json');return response.json();}if(path==='/api/meals'&&method==='GET')return {meals:await list(),storageMode:'firebase'};if(path==='/api/meals/refresh-today'&&method==='GET')return {meals:await list(),storageMode:'firebase'};if(path.startsWith('/api/meals/date/')&&method==='GET'){const date=path.split('/').pop();if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw Error('Choose a valid date.');return {meals:await entriesForDate(date),storageMode:'firebase'};}for(const [kind,collection] of Object.entries({health:'food_tracker_health',wellness:'food_tracker_wellness'})){if(path==='/api/'+kind+'/refresh'&&method==='GET')return {records:await listTracker(collection,true)};if(path==='/api/'+kind&&method==='GET')return {records:await listTracker(collection)};if(path==='/api/'+kind+'/import'&&method==='POST')return {records:await importTracker(collection,kind,JSON.parse(options.body).records)};if(path.startsWith('/api/'+kind+'/')&&method==='PUT'){const id=path.split('/').pop();if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw Error('Invalid record identifier.');return saveTracker(collection,id,validateTracker(JSON.parse(options.body),kind));}}const id=path.startsWith('/api/meals/')?path.split('/').pop():crypto.randomUUID().replaceAll('-','');if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id))throw Error('Invalid meal identifier.');if(method==='DELETE'){await remote('DELETE','/'+id);removeCachedEntry('food_tracker_meals',id);return {ok:true};}if(method==='POST'||method==='PUT'){const entry={...validate(JSON.parse(options.body)),id};if(method==='POST')entry.source='Manual entry';await remote('PATCH','/'+id,{'currentDocument.exists':method==='POST'?'false':'true'},{fields:typedFields(entry)});updateCachedEntry('food_tracker_meals',entry);return entry;}throw Error('Unsupported operation.');}
  async function exportCSV(){const fields=['date','mealType','meal','derickMeal','preparer','preparation','notes','source'];const cell=value=>{let text=String(value??'');if(/^[=+\-@\t\r]/.test(text))text="'"+text;return '"'+text.replaceAll('"','""')+'"';};const entries=await list();entries.sort((a,b)=>b.date.localeCompare(a.date));const csv='\uFEFF'+[fields.map(cell).join(','),...entries.map(e=>fields.map(f=>cell(e[f])).join(','))].join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='meal-history.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
  return {signIn,restoreSession,needsMigration,migrate,request,exportCSV};
 })();
