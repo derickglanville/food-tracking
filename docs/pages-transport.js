@@ -25,7 +25,7 @@ window.GatherTransport=(()=>{
      await authInstance().signOut();
      throw Error('Only '+allowedEmail+' can use this journal.');
    }
-   token=await user.getIdToken();
+   try{token=await user.getIdToken();}catch(error){if(String(error.code||error.message).includes('securetoken'))throw Error('Google Token Service is blocked for this API key. Add Token Service API to the key restrictions, then sign in again.');throw error;}
    return true;
  }
  async function signIn(){
@@ -43,7 +43,6 @@ window.GatherTransport=(()=>{
  }
  async function remote(method,path='',params={},body,collection='food_tracker_meals'){
    if(!token)throw Error('Sign in with Google before continuing.');
-   token=await authInstance().currentUser.getIdToken();
    const url=new URL((collection==='food_tracker_meals'?root:collectionRoot(collection))+path);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
    let response;for(let attempt=0;attempt<4;attempt++){
      try{response=await fetch(url,{method,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},...(body?{body:JSON.stringify(body)}:{})});}

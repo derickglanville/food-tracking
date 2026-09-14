@@ -81,8 +81,9 @@ function healthFor(date){return healthRecords.find(record=>record.date===date)||
 function wellnessFor(date){return wellnessRecords.find(record=>record.date===date)||{};}
 function renderHealth(){
   const form=$('health-form');if(!form)return;
-  const current=healthFor(form.elements.date.value||today());
-  Object.entries({date:form.elements.date.value||today(),distanceWalked:'',distanceUnit:'miles',bloodPressure:'',bloodSugar:'',bloodSugarUnit:'mg/dL',weight:'',weightUnit:'lb',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
+  const date=form.elements.date.value||today(),current=healthFor(date);
+  Object.entries({date,distanceWalked:'',distanceUnit:'miles',bloodPressure:'',bloodSugar:'',bloodSugarUnit:'mg/dL',weight:'',weightUnit:'lb',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
+  $('health-next').disabled=date>=today();
   const recent=[...healthRecords].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,7);
   $('health-history').innerHTML=recent.length?`<div class="table-scroll"><table><thead><tr><th>Date</th><th>Walked</th><th>Pressure</th><th>Sugar</th><th>Weight</th></tr></thead><tbody>${recent.map(r=>`<tr><td>${formatDate(r.date)}</td><td>${escapeHtml(r.distanceWalked||'—')} ${escapeHtml(r.distanceWalked?r.distanceUnit:'')}</td><td>${escapeHtml(r.bloodPressure||'—')}</td><td>${escapeHtml(r.bloodSugar||'—')} ${escapeHtml(r.bloodSugar?r.bloodSugarUnit:'')}</td><td>${escapeHtml(r.weight||'—')} ${escapeHtml(r.weight?r.weightUnit:'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No health records saved yet.</div>';
 }
@@ -250,6 +251,10 @@ $('meal-form').addEventListener('change',()=>scheduleAutosave($('meal-form'),()=
 ['health-form','wellness-form'].forEach(id=>$(id).addEventListener('change',event=>{if(event.target.name==='date'){id==='health-form'?renderHealth():renderWellness();return;}scheduleAutosave($(id),()=>true);}));
 ['health-form','wellness-form'].forEach(id=>$(id).addEventListener('input',event=>{if(event.target.name!=='date')scheduleAutosave($(id),()=>true);}));
 $('health-status').textContent='Autosave is on.';$('wellness-status').textContent='Autosave is on.';
+function setHealthDate(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;$('health-form').elements.namedItem('date').value=date;renderHealth();}
+$('health-previous').onclick=()=>setHealthDate(shiftDate($('health-form').elements.namedItem('date').value||today(),-1));
+$('health-next').onclick=()=>setHealthDate(shiftDate($('health-form').elements.namedItem('date').value||today(),1));
+$('health-today').onclick=()=>setHealthDate(today());
 function setWellnessDate(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;$('wellness-form').elements.namedItem('date').value=date;renderWellness();}
 $('wellness-previous').onclick=()=>setWellnessDate(shiftDate($('wellness-form').elements.namedItem('date').value||today(),-1));
 $('wellness-next').onclick=()=>setWellnessDate(shiftDate($('wellness-form').elements.namedItem('date').value||today(),1));
