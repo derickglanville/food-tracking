@@ -3,14 +3,14 @@ const googleButton=document.getElementById('google-button');
 const loginError=document.getElementById('unlock-error');
 let busy=false;
 async function openJournal(){
-  const response=await fetch('./app.html?v=health-metric-alignment-16');
+  const response=await fetch('./app.html?v=health-value-unit-rows-17');
   if(!response.ok)throw Error('The journal could not load. Please retry.');
   const parsed=new DOMParser().parseFromString(await response.text(),'text/html');
   document.body.className='';
   document.body.innerHTML=parsed.body.innerHTML;
   await new Promise((resolve,reject)=>{
     const script=document.createElement('script');
-    script.src='./static/app.js?v=health-metric-alignment-16';
+    script.src='./static/app.js?v=health-value-unit-rows-17';
     script.onload=resolve;
     script.onerror=()=>reject(Error('The journal script could not load.'));
     document.body.append(script);
