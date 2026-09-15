@@ -8,6 +8,7 @@ let meals = [], filtered = [], healthRecords = [], wellnessRecords = [], healthL
 let selectedDay = today();
 let lastTodayRefresh = 0;
 const checkedMealDays = new Set();
+const trackerRefreshTimes = new Map();
 let calendarToday = today();
 const titles = {dashboard:['Overview','One day at your table.','Breakfast, lunch, and dinner — together in one daily card.'],journal:['Meal journal','Your daily meal cards.','Move between days or choose a date to see the whole day.'],trends:['Trends','Your family’s food rhythm.','See how meals and preparation change over time.'],ideas:['Meal ideas','A little inspiration for your table.','Simple, colorful ideas to make your everyday meals feel fresh.'],health:['Daily health','Your daily health check.','Track activity and everyday measurements over time.'],wellness:['Daily wellness','Your daily wellness check.','A simple private record for each day.']};
 
@@ -29,18 +30,28 @@ function setView(view) {
   const [label,title,subtitle] = titles[view];
   $('page-label').textContent=label; $('page-title').textContent=title; $('page-subtitle').textContent=subtitle;
   document.querySelector('.filters').hidden=['ideas','health','wellness'].includes(view);
-  if(view==='health')loadTracker('health');
-  if(view==='wellness')loadTracker('wellness');
+  if(view==='health')loadTracker('health').then(()=>refreshTrackerDate('health',$('health-form').elements.date.value||today()));
+  if(view==='wellness')loadTracker('wellness').then(()=>refreshTrackerDate('wellness',$('wellness-form').elements.date.value||today()));
   window.scrollTo({top:0,behavior:'smooth'});
 }
 async function loadTracker(kind){
-  const loadedKey=kind==='health'?'healthLoaded':'wellnessLoaded';
   if(kind==='health'?healthLoaded:wellnessLoaded)return;
   try{
     const records=(await api('/api/'+kind)).records;
     if(kind==='health'){healthRecords=records;healthLoaded=true;}else{wellnessRecords=records;wellnessLoaded=true;}
     render();
   }catch(error){notice(error.message,true);}
+}
+async function refreshTrackerDate(kind,date,silent=true){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;
+  const key=kind+':'+date,now=Date.now();if(now-(trackerRefreshTimes.get(key)||0)<30000)return;
+  trackerRefreshTimes.set(key,now);
+  try{
+    const records=(await api('/api/'+kind+'/date/'+date)).records;
+    if(kind==='health'){healthRecords=[...healthRecords.filter(record=>record.date!==date),...records];renderHealth();}
+    else{wellnessRecords=[...wellnessRecords.filter(record=>record.date!==date),...records];renderWellness();}
+    if(!silent)notice(`${kind==='health'?'Daily health':'Daily wellness'} refreshed from Firebase.`);
+  }catch(error){if(!silent)notice(error.message,true);}
 }
 function group(items,key) { return items.reduce((counts,item)=>{const value=item[key]||'Unspecified'; counts[value]=(counts[value]||0)+1;return counts;},{}); }
 function sortedCounts(counts) { return Object.entries(counts).sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0])); }
@@ -249,8 +260,9 @@ $('refresh-today').onclick=()=>refreshToday();
 $('reset').onclick=()=>{$('search').value='';$('period').value='all';$('type-filter').value='';$('preparer-filter').value='';$('from').value='';$('to').value='';applyFilters();};
 document.addEventListener('change',event=>{if(event.target.matches('[data-day-date]'))goToDay(event.target.value);});
 setInterval(checkNewDay,30000);
-window.addEventListener('focus',()=>{checkNewDay();refreshToday(true);});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkNewDay();refreshToday(true);}});
+function refreshActiveTracker(){if(currentView==='health')refreshTrackerDate('health',$('health-form').elements.date.value||today());if(currentView==='wellness')refreshTrackerDate('wellness',$('wellness-form').elements.date.value||today());}
+window.addEventListener('focus',()=>{checkNewDay();refreshToday(true);refreshActiveTracker();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkNewDay();refreshToday(true);refreshActiveTracker();}});
 $('close-dialog').onclick=()=>$('meal-dialog').close();
 const autosaveTimers={};
 function scheduleAutosave(form,canSave){
@@ -278,14 +290,14 @@ $('health-form').onsubmit=async event=>{event.preventDefault();const form=event.
 $('wellness-form').onsubmit=async event=>{event.preventDefault();const form=event.target;if(form.dataset.saving==='true')return;form.dataset.saving='true';const automatic=form.dataset.automatic==='true';delete form.dataset.automatic;const data=Object.fromEntries(new FormData(form)),id='wellness_'+data.date.replaceAll('-','');$('save-wellness').disabled=true;$('wellness-error').textContent='';try{const record=await api('/api/wellness/'+id,{method:'PUT',body:JSON.stringify(data)});wellnessRecords=wellnessRecords.filter(item=>item.id!==record.id);wellnessRecords.push(record);$('wellness-status').textContent=automatic?'Saved automatically.':'Saved to Firebase.';renderWellness();if(!automatic)notice('Daily wellness check saved to Firebase.');}catch(error){$('wellness-error').textContent=error.message;}finally{delete form.dataset.saving;$('save-wellness').disabled=false;}};
 $('meal-form').addEventListener('input',()=>scheduleAutosave($('meal-form'),()=>{const form=$('meal-form');return !!(form.elements.namedItem('meal').value.trim()||form.elements.namedItem('derickMeal').value.trim());}));
 $('meal-form').addEventListener('change',()=>scheduleAutosave($('meal-form'),()=>{const form=$('meal-form');return !!(form.elements.namedItem('meal').value.trim()||form.elements.namedItem('derickMeal').value.trim());}));
-['health-form','wellness-form'].forEach(id=>$(id).addEventListener('change',event=>{if(event.target.name==='date'){id==='health-form'?renderHealth():renderWellness();return;}scheduleAutosave($(id),()=>true);}));
+['health-form','wellness-form'].forEach(id=>$(id).addEventListener('change',event=>{if(event.target.name==='date'){id==='health-form'?setHealthDate(event.target.value):setWellnessDate(event.target.value);return;}scheduleAutosave($(id),()=>true);}));
 ['health-form','wellness-form'].forEach(id=>$(id).addEventListener('input',event=>{if(event.target.name!=='date')scheduleAutosave($(id),()=>true);}));
 $('health-status').textContent='Autosave is on.';$('wellness-status').textContent='Autosave is on.';
-function setHealthDate(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;$('health-form').elements.namedItem('date').value=date;renderHealth();}
+function setHealthDate(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;$('health-form').elements.namedItem('date').value=date;renderHealth();refreshTrackerDate('health',date);}
 $('health-previous').onclick=()=>setHealthDate(shiftDate($('health-form').elements.namedItem('date').value||today(),-1));
 $('health-next').onclick=()=>setHealthDate(shiftDate($('health-form').elements.namedItem('date').value||today(),1));
 $('health-today').onclick=()=>setHealthDate(today());
-function setWellnessDate(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;$('wellness-form').elements.namedItem('date').value=date;renderWellness();}
+function setWellnessDate(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;$('wellness-form').elements.namedItem('date').value=date;renderWellness();refreshTrackerDate('wellness',date);}
 $('wellness-previous').onclick=()=>setWellnessDate(shiftDate($('wellness-form').elements.namedItem('date').value||today(),-1));
 $('wellness-next').onclick=()=>setWellnessDate(shiftDate($('wellness-form').elements.namedItem('date').value||today(),1));
 $('wellness-today').onclick=()=>setWellnessDate(today());
