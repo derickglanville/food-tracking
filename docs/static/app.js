@@ -95,7 +95,9 @@ function wellnessFor(date){return wellnessRecords.find(record=>record.date===dat
 function renderHealth(){
   const form=$('health-form');if(!form)return;
   const date=form.elements.date.value||today(),current=healthFor(date);
-  Object.entries({date,distanceWalked:'',distanceUnit:'miles',bloodPressure:'',bloodSugar:'',bloodSugarUnit:'mg/dL',weight:'',weightUnit:'lb',waterIntake:'',waterUnit:'cups',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
+  const isNew=!current.id, defaults={date,distanceWalked:'',distanceUnit:'miles',waterIntake:'36',waterUnit:'fl oz',bloodSugar:'136',bloodSugarUnit:'mg/dL',weight:'212',weightUnit:'lb',bloodPressure:'126/89',waterNeedsReview:isNew,bloodSugarNeedsReview:isNew,weightNeedsReview:isNew,bloodPressureNeedsReview:isNew,...current};
+  Object.entries(defaults).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
+  const reviews={waterIntake:defaults.waterNeedsReview,bloodSugar:defaults.bloodSugarNeedsReview,weight:defaults.weightNeedsReview,bloodPressure:defaults.bloodPressureNeedsReview};Object.entries(reviews).forEach(([field,needed])=>form.elements[field]?.classList.toggle('needs-review',needed===true||needed==='true'));
   $('health-next').disabled=date>=today();
   const recent=[...healthRecords].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,7);
   $('health-history').innerHTML=recent.length?`<div class="table-scroll"><table><thead><tr><th>Date</th><th>Pressure</th><th>Sugar</th><th>Weight</th><th>Water</th></tr></thead><tbody>${recent.map(r=>`<tr><td>${formatDate(r.date)}</td><td>${escapeHtml(r.bloodPressure||'—')}</td><td>${escapeHtml(r.bloodSugar||'—')} ${escapeHtml(r.bloodSugar?r.bloodSugarUnit:'')}</td><td>${escapeHtml(r.weight||'—')} ${escapeHtml(r.weight?r.weightUnit:'')}</td><td>${escapeHtml(r.waterIntake||'—')} ${escapeHtml(r.waterIntake?r.waterUnit:'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No health records saved yet.</div>';
@@ -265,6 +267,7 @@ function refreshActiveTracker(){if(currentView==='health')refreshTrackerDate('he
 window.addEventListener('focus',()=>{checkNewDay();refreshToday(true);refreshActiveTracker();});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkNewDay();refreshToday(true);refreshActiveTracker();}});
 $('close-dialog').onclick=()=>$('meal-dialog').close();
+function clearHealthReview(field){const marker={waterIntake:'waterNeedsReview',waterUnit:'waterNeedsReview',bloodSugar:'bloodSugarNeedsReview',bloodSugarUnit:'bloodSugarNeedsReview',weight:'weightNeedsReview',weightUnit:'weightNeedsReview',bloodPressure:'bloodPressureNeedsReview'}[field];if(marker){const form=$('health-form');form.elements[marker].value='false';const inputField={waterUnit:'waterIntake',bloodSugarUnit:'bloodSugar',weightUnit:'weight'}[field]||field;form.elements[inputField]?.classList.remove('needs-review');}}
 const autosaveTimers={};
 function scheduleAutosave(form,canSave){
   clearTimeout(autosaveTimers[form.id]);
@@ -291,9 +294,10 @@ $('health-form').onsubmit=async event=>{event.preventDefault();const form=event.
 $('wellness-form').onsubmit=async event=>{event.preventDefault();const form=event.target;if(form.dataset.saving==='true')return;form.dataset.saving='true';const automatic=form.dataset.automatic==='true';delete form.dataset.automatic;const data=Object.fromEntries(new FormData(form)),id='wellness_'+data.date.replaceAll('-','');$('save-wellness').disabled=true;$('wellness-error').textContent='';try{const record=await api('/api/wellness/'+id,{method:'PUT',body:JSON.stringify(data)});wellnessRecords=wellnessRecords.filter(item=>item.id!==record.id);wellnessRecords.push(record);$('wellness-status').textContent=automatic?'Saved automatically.':'Saved to Firebase.';renderWellness();if(!automatic)notice('Daily wellness check saved to Firebase.');}catch(error){$('wellness-error').textContent=error.message;}finally{delete form.dataset.saving;$('save-wellness').disabled=false;}};
 $('meal-form').addEventListener('input',()=>scheduleAutosave($('meal-form'),()=>{const form=$('meal-form');return !!(form.elements.namedItem('meal').value.trim()||form.elements.namedItem('derickMeal').value.trim());}));
 $('meal-form').addEventListener('change',()=>scheduleAutosave($('meal-form'),()=>{const form=$('meal-form');return !!(form.elements.namedItem('meal').value.trim()||form.elements.namedItem('derickMeal').value.trim());}));
-['health-form','wellness-form'].forEach(id=>$(id).addEventListener('change',event=>{if(event.target.name==='date'){id==='health-form'?setHealthDate(event.target.value):setWellnessDate(event.target.value);return;}scheduleAutosave($(id),()=>true);}));
-['health-form','wellness-form'].forEach(id=>$(id).addEventListener('input',event=>{if(event.target.name!=='date')scheduleAutosave($(id),()=>true);}));
+['health-form','wellness-form'].forEach(id=>$(id).addEventListener('change',event=>{if(event.target.name==='date'){id==='health-form'?setHealthDate(event.target.value):setWellnessDate(event.target.value);return;}if(id==='health-form')clearHealthReview(event.target.name);scheduleAutosave($(id),()=>true);}));
+['health-form','wellness-form'].forEach(id=>$(id).addEventListener('input',event=>{if(event.target.name!=='date'){if(id==='health-form')clearHealthReview(event.target.name);scheduleAutosave($(id),()=>true);}}));
 $('health-status').textContent='Autosave is on.';$('wellness-status').textContent='Autosave is on.';
+$('accept-health-defaults').onclick=()=>{const form=$('health-form');['waterNeedsReview','bloodSugarNeedsReview','weightNeedsReview','bloodPressureNeedsReview'].forEach(name=>form.elements[name].value='false');['waterIntake','bloodSugar','weight','bloodPressure'].forEach(name=>form.elements[name].classList.remove('needs-review'));scheduleAutosave(form,()=>true);};
 function setHealthDate(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;$('health-form').elements.namedItem('date').value=date;renderHealth();refreshTrackerDate('health',date);}
 $('health-previous').onclick=()=>setHealthDate(shiftDate($('health-form').elements.namedItem('date').value||today(),-1));
 $('health-next').onclick=()=>setHealthDate(shiftDate($('health-form').elements.namedItem('date').value||today(),1));

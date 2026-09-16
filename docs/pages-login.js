@@ -3,14 +3,14 @@ const googleButton=document.getElementById('google-button');
 const loginError=document.getElementById('unlock-error');
 let busy=false;
 async function openJournal(){
-  const response=await fetch('./app.html?v=health-water-and-steps-21');
+  const response=await fetch('./app.html?v=health-review-defaults-22');
   if(!response.ok)throw Error('The journal could not load. Please retry.');
   const parsed=new DOMParser().parseFromString(await response.text(),'text/html');
   document.body.className='';
   document.body.innerHTML=parsed.body.innerHTML;
   await new Promise((resolve,reject)=>{
     const script=document.createElement('script');
-    script.src='./static/app.js?v=health-water-and-steps-21';
+    script.src='./static/app.js?v=health-review-defaults-22';
     script.onload=resolve;
     script.onerror=()=>reject(Error('The journal script could not load.'));
     document.body.append(script);
