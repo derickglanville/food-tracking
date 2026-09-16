@@ -257,6 +257,7 @@ document.addEventListener('click',event=>{
 ['search','period','type-filter','preparer-filter','from','to'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',applyFilters));
 ['diet','avoid'].forEach(id=>$(id).addEventListener(id==='avoid'?'input':'change',renderIdeas));
 $('refresh-today').onclick=()=>refreshToday();
+$('rename-pat').onclick=async()=>{const button=$('rename-pat');button.disabled=true;try{const updated=(await api('/api/meals/rename-preparer',{method:'POST',body:JSON.stringify({from:'Pat',to:'Georgette'})})).meals;meals=[...meals.filter(old=>!updated.some(entry=>entry.id===old.id)),...updated];sortMeals();updateOptions();applyFilters();notice(updated.length?`${updated.length} meal ${updated.length===1?'record was':'records were'} updated from Pat to Georgette.`:'No meal records prepared by Pat were found.');}catch(error){notice(error.message,true);}finally{button.disabled=false;}};
 $('reset').onclick=()=>{$('search').value='';$('period').value='all';$('type-filter').value='';$('preparer-filter').value='';$('from').value='';$('to').value='';applyFilters();};
 document.addEventListener('change',event=>{if(event.target.matches('[data-day-date]'))goToDay(event.target.value);});
 setInterval(checkNewDay,30000);

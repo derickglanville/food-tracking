@@ -24,3 +24,5 @@
 @media(min-width:851px){#health-form .form-grid{grid-template-columns:1fr;gap:10px}#health-form .form-grid label{display:grid;grid-template-columns:170px minmax(0,1fr);align-items:center;gap:18px;margin:0;font-weight:600}#health-form .form-grid label input,#health-form .form-grid label select{margin:0}}
 
 .metric-description{align-self:end;margin:0;padding:0 0 11px;color:#60715e;font-size:12px;font-weight:600;line-height:1.4}.metric-description span{color:#84907f;font-weight:500;font-size:11px}@media(min-width:851px){#health-form .health-metrics{grid-template-columns:1fr 1fr;gap:15px}#health-form .health-metrics label{display:block;margin-bottom:4px}#health-form .health-metrics label input,#health-form .health-metrics label select{margin-top:8px}}@media(max-width:850px){.metric-description{align-self:auto;padding:0 0 8px;font-size:16px}.metric-description span{font-size:14px}}
+
+.journal-actions{display:flex;gap:8px;align-items:center}@media(max-width:600px){.journal-actions{width:100%;justify-content:space-between}.journal-actions .secondary{font-size:12px;padding:10px}}
