@@ -95,10 +95,10 @@ function wellnessFor(date){return wellnessRecords.find(record=>record.date===dat
 function renderHealth(){
   const form=$('health-form');if(!form)return;
   const date=form.elements.date.value||today(),current=healthFor(date);
-  Object.entries({date,distanceWalked:'',distanceUnit:'miles',bloodPressure:'',bloodSugar:'',bloodSugarUnit:'mg/dL',weight:'',weightUnit:'lb',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
+  Object.entries({date,distanceWalked:'',distanceUnit:'miles',bloodPressure:'',bloodSugar:'',bloodSugarUnit:'mg/dL',weight:'',weightUnit:'lb',waterIntake:'',waterUnit:'cups',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
   $('health-next').disabled=date>=today();
   const recent=[...healthRecords].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,7);
-  $('health-history').innerHTML=recent.length?`<div class="table-scroll"><table><thead><tr><th>Date</th><th>Walked</th><th>Pressure</th><th>Sugar</th><th>Weight</th></tr></thead><tbody>${recent.map(r=>`<tr><td>${formatDate(r.date)}</td><td>${escapeHtml(r.distanceWalked||'—')} ${escapeHtml(r.distanceWalked?r.distanceUnit:'')}</td><td>${escapeHtml(r.bloodPressure||'—')}</td><td>${escapeHtml(r.bloodSugar||'—')} ${escapeHtml(r.bloodSugar?r.bloodSugarUnit:'')}</td><td>${escapeHtml(r.weight||'—')} ${escapeHtml(r.weight?r.weightUnit:'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No health records saved yet.</div>';
+  $('health-history').innerHTML=recent.length?`<div class="table-scroll"><table><thead><tr><th>Date</th><th>Pressure</th><th>Sugar</th><th>Weight</th><th>Water</th></tr></thead><tbody>${recent.map(r=>`<tr><td>${formatDate(r.date)}</td><td>${escapeHtml(r.bloodPressure||'—')}</td><td>${escapeHtml(r.bloodSugar||'—')} ${escapeHtml(r.bloodSugar?r.bloodSugarUnit:'')}</td><td>${escapeHtml(r.weight||'—')} ${escapeHtml(r.weight?r.weightUnit:'')}</td><td>${escapeHtml(r.waterIntake||'—')} ${escapeHtml(r.waterIntake?r.waterUnit:'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No health records saved yet.</div>';
 }
 function renderWellness(){
   const form=$('wellness-form');if(!form)return;
