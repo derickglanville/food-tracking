@@ -4,6 +4,7 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const formatDate = value => new Date(value+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
 const icons = {Breakfast:'☀',Lunch:'◒',Dinner:'☾',Snack:'✧'};
+const canonicalPreparer = value => String(value||'').trim().toLowerCase()==='pat' ? 'Georgette' : String(value||'').trim();
 let meals = [], filtered = [], healthRecords = [], wellnessRecords = [], healthLoaded = false, wellnessLoaded = false, currentView = 'dashboard', page = 0, loaded = false;
 let selectedDay = today();
 let lastTodayRefresh = 0;
@@ -157,7 +158,7 @@ function renderJournal() {
 async function loadMealDay(value){
   if(checkedMealDays.has(value))return;
   checkedMealDays.add(value);
-  try{const data=await api('/api/meals/date/'+value);meals=[...meals.filter(entry=>entry.date!==value),...data.meals];sortMeals();updateOptions();applyFilters();}
+  try{const data=await api('/api/meals/date/'+value);meals=[...meals.filter(entry=>entry.date!==value),...data.meals.map(entry=>({...entry,preparer:canonicalPreparer(entry.preparer)}))];sortMeals();updateOptions();applyFilters();}
   catch(error){checkedMealDays.delete(value);notice(error.message,true);}
 }
 function goToDay(value){
@@ -225,7 +226,7 @@ function updateOptions() {
   $('preparer-options').innerHTML=names.map(n=>`<option value="${escapeHtml(n)}"></option>`).join('');
 }
 function applyMeals(data){
-  meals=data.meals;meals.forEach(entry=>checkedMealDays.add(entry.date));checkedMealDays.add(today());sortMeals();loaded=true;updateOptions();applyFilters();
+  meals=data.meals.map(entry=>({...entry,preparer:canonicalPreparer(entry.preparer)}));meals.forEach(entry=>checkedMealDays.add(entry.date));checkedMealDays.add(today());sortMeals();loaded=true;updateOptions();applyFilters();
 }
 async function load() {
   try {const data=await api('/api/meals');applyMeals(data);
@@ -260,7 +261,7 @@ document.addEventListener('click',event=>{
 ['search','period','type-filter','preparer-filter','from','to'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',applyFilters));
 ['diet','avoid'].forEach(id=>$(id).addEventListener(id==='avoid'?'input':'change',renderIdeas));
 $('refresh-today').onclick=()=>refreshToday();
-$('rename-pat').onclick=async()=>{const button=$('rename-pat');button.disabled=true;try{const updated=(await api('/api/meals/rename-preparer',{method:'POST',body:JSON.stringify({from:'Pat',to:'Georgette'})})).meals;meals=[...meals.filter(old=>!updated.some(entry=>entry.id===old.id)),...updated];sortMeals();updateOptions();applyFilters();notice(updated.length?`${updated.length} meal ${updated.length===1?'record was':'records were'} updated from Pat to Georgette.`:'No meal records prepared by Pat were found.');}catch(error){notice(error.message,true);}finally{button.disabled=false;}};
+$('rename-pat').onclick=async()=>{const button=$('rename-pat');button.disabled=true;try{const updated=(await api('/api/meals/rename-preparer',{method:'POST',body:JSON.stringify({from:'Pat',to:'Georgette'})})).meals;meals=[...meals.filter(old=>!updated.some(entry=>entry.id===old.id)),...updated.map(entry=>({...entry,preparer:canonicalPreparer(entry.preparer)}))];sortMeals();updateOptions();applyFilters();notice(updated.length?`${updated.length} meal ${updated.length===1?'record was':'records were'} updated from Pat to Georgette.`:'No meal records prepared by Pat were found.');}catch(error){notice(error.message,true);}finally{button.disabled=false;}};
 $('reset').onclick=()=>{$('search').value='';$('period').value='all';$('type-filter').value='';$('preparer-filter').value='';$('from').value='';$('to').value='';applyFilters();};
 document.addEventListener('change',event=>{if(event.target.matches('[data-day-date]'))goToDay(event.target.value);});
 setInterval(checkNewDay,30000);
