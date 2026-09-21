@@ -93,10 +93,12 @@ window.GatherTransport=(()=>{
  function validate(data){const limits={date:10,mealType:20,meal:500,derickMeal:500,preparer:120,preparation:30,notes:1000,source:250};const result={};for(const [field,max] of Object.entries(limits)){const value=data[field]??'';if(typeof value!=='string'||value.length>max)throw Error(`Invalid ${field}.`);result[field]=value.trim();}if(!/^\d{4}-\d{2}-\d{2}$/.test(result.date)||isNaN(Date.parse(result.date))||new Date(result.date).toISOString().slice(0,10)!==result.date)throw Error('Choose a valid date.');if(!['Breakfast','Lunch','Dinner','Snack'].includes(result.mealType))throw Error('Choose a meal type.');if(!['Home cooked','Bought','Leftovers','Unspecified'].includes(result.preparation))throw Error('Choose a preparation type.');if(!result.meal&&!result.derickMeal)throw Error('Enter a meal for at least one person.');if(result.preparer.toLowerCase()==='pat')result.preparer='Georgette';result.needsReview=!!data.needsReview;return result;}
  async function entriesForDate(date){return dateEntries('food_tracker_meals',date,date);}
  async function list(){
-   const cached=cachedEntries('food_tracker_meals'),date=localDate();
-   const base=cached||await dateEntries('food_tracker_meals',daysBefore(date,90),date);
-   const freshToday=await entriesForDate(date);
-   const entries=[...base.filter(entry=>entry.date!==date),...freshToday];
+   const cached=cachedEntries('food_tracker_meals'),date=localDate(),recentStart=daysBefore(date,6);
+   let entries;
+   if(cached){
+     const freshRecent=await dateEntries('food_tracker_meals',recentStart,date);
+     entries=[...cached.filter(entry=>entry.date<recentStart||entry.date>date),...freshRecent];
+   }else entries=await dateEntries('food_tracker_meals',daysBefore(date,90),date);
    writeCachedEntries('food_tracker_meals',entries);
    if(entries.some(entry=>entry.schema==='gather-aes-gcm-v1'))throw Error('Migration required before the journal can open.');
    return entries;

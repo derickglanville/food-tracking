@@ -243,7 +243,7 @@ async function refreshToday(silent=false){
   if(Date.now()-lastTodayRefresh<60*1000)return;
   lastTodayRefresh=Date.now();
   const button=$('refresh-today');if(button)button.disabled=true;
-  try{applyMeals(await api('/api/meals/refresh-today'));if(!silent)notice('Today’s meals refreshed from Firebase.');}
+  try{applyMeals(await api('/api/meals/refresh-today'));if(!silent)notice('Recent meals refreshed from Firebase.');}
   catch(error){if(!silent)notice(error.message,true);}
   finally{if(button)button.disabled=false;}
 }
