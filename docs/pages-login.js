@@ -3,14 +3,14 @@ const googleButton=document.getElementById('google-button');
 const loginError=document.getElementById('unlock-error');
 let busy=false;
 async function openJournal(){
-  const response=await fetch('./app.html?v=recent-meals-cross-device-sync-25');
+  const response=await fetch('./app.html?v=meal-nutrition-guidance-26');
   if(!response.ok)throw Error('The journal could not load. Please retry.');
   const parsed=new DOMParser().parseFromString(await response.text(),'text/html');
   document.body.className='';
   document.body.innerHTML=parsed.body.innerHTML;
   await new Promise((resolve,reject)=>{
     const script=document.createElement('script');
-    script.src='./static/app.js?v=recent-meals-cross-device-sync-25';
+    script.src='./static/app.js?v=meal-nutrition-guidance-26';
     script.onload=resolve;
     script.onerror=()=>reject(Error('The journal script could not load.'));
     document.body.append(script);
