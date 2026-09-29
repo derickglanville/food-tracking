@@ -10,6 +10,7 @@ function nutritionSummary(entries){const derickEntries=entries.filter(entry=>Str
 const canonicalPreparer = value => String(value||'').trim().toLowerCase()==='pat' ? 'Georgette' : String(value||'').trim();
 let meals = [], filtered = [], healthRecords = [], wellnessRecords = [], healthLoaded = false, wellnessLoaded = false, currentView = 'dashboard', page = 0, loaded = false;
 let selectedDay = today();
+let journalHistoryOffset = 0;
 let lastTodayRefresh = 0;
 const checkedMealDays = new Set();
 const trackerRefreshTimes = new Map();
@@ -148,12 +149,17 @@ function dayCard(){
   }).join('')}</div><div class="day-card-footer"><span>${entries.length} saved meal ${entries.length===1?'entry':'entries'} · ${hasMealFilters()?`${days.length} matching days`:'A fresh card is ready every day'}</span><button class="text-button" data-day-add="Snack" data-date="${selectedDay}">＋ Add snack</button></div></article>`;
 }
 function journalHistoryGrid(){
-  const dates=Array.from({length:7},(_,index)=>shiftDate(selectedDay,-(index+1)));
-  return `<section class="journal-history"><div class="panel-head"><div><h2>Previous daily meals</h2><p class="muted">Choose a card to open that day’s meal record.</p></div></div><div class="journal-day-grid">${dates.map(date=>{
+  const dates=Array.from({length:7},(_,index)=>shiftDate(selectedDay,-(journalHistoryOffset+index+1)));
+  return `<section class="journal-history"><div class="panel-head"><div><h2>Previous daily meals</h2><p class="muted">Choose a card to open that day’s meal record.</p></div><div class="history-controls"><button type="button" class="secondary" data-history-shift="7">← Previous</button><button type="button" class="secondary" data-history-shift="-7" ${journalHistoryOffset<=0?'disabled':''}>Next →</button></div></div><div class="journal-day-grid">${dates.map(date=>{
     const entries=meals.filter(entry=>entry.date===date), label=new Date(date+'T12:00:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
     const summary=['Breakfast','Lunch','Dinner'].map(type=>{const entry=entries.find(item=>item.mealType===type);return `<li><span>${icons[type]} ${type}</span><b>${escapeHtml(entry?(entry.meal||entry.derickMeal||'Recorded'):'—')}</b></li>`;}).join('');
     return `<button type="button" class="journal-day ${entries.length?'has-meals':''}" data-journal-day="${date}" aria-label="Open meals for ${label}"><header><span class="journal-day-date">${label}</span><strong class="journal-day-count">${entries.length}/3</strong></header><ul>${summary}</ul></button>`;
   }).join('')}</div></section>`;
+}
+async function loadHistoryPage(){
+  const newest=shiftDate(selectedDay,-(journalHistoryOffset+1)),oldest=shiftDate(selectedDay,-(journalHistoryOffset+7));
+  try{const data=await api('/api/meals/range/'+oldest+'/'+newest);meals=[...meals.filter(entry=>entry.date<oldest||entry.date>newest),...data.meals.map(entry=>({...entry,preparer:canonicalPreparer(entry.preparer)}))];sortMeals();updateOptions();render();}
+  catch(error){notice(error.message,true);}
 }
 function renderJournal() {
   $('journal-count').textContent=`${filtered.length.toLocaleString()} meal occasions · grouped by day`;
@@ -167,7 +173,7 @@ async function loadMealDay(value){
 }
 function goToDay(value){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(value)||isNaN(Date.parse(value)))return;
-  selectedDay=value;
+  selectedDay=value;journalHistoryOffset=0;
   $('search').value='';$('period').value='all';$('type-filter').value='';$('preparer-filter').value='';
   applyFilters();loadMealDay(value);
 }
@@ -259,6 +265,7 @@ document.addEventListener('click',event=>{
   const dayShift=event.target.closest('[data-day-shift]');if(dayShift){const days=availableDays();selectedDay=days[days.indexOf(selectedDay)+Number(dayShift.dataset.dayShift)]||selectedDay;render();}
   if(event.target.closest('[data-day-today]'))goToDay(today());
   const journalDay=event.target.closest('[data-journal-day]');if(journalDay)goToDay(journalDay.dataset.journalDay);
+  const historyShift=event.target.closest('[data-history-shift]');if(historyShift){journalHistoryOffset=Math.max(0,journalHistoryOffset+Number(historyShift.dataset.historyShift));render();loadHistoryPage();}
   const edit=event.target.closest('[data-edit]');if(edit)openMeal(meals.find(e=>e.id===edit.dataset.edit));
   const recipe=event.target.closest('[data-recipe]');if(recipe){const r=recipes[Number(recipe.dataset.recipe)];openMeal({meal:r.name,mealType:r.type,preparation:'Home cooked'});}
 });
