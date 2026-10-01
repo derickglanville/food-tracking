@@ -36,3 +36,5 @@
 .derick-nutrition{margin-top:16px;padding:14px 15px;border:1px solid #dbe6ce;border-radius:9px;background:#f7faef}.derick-nutrition p{display:flex;gap:10px;align-items:baseline;margin:0 0 12px;color:#3a604c}.derick-nutrition p b{font-size:13px}.derick-nutrition p span{font-size:12px;color:#667b6d}@media(max-width:850px){.derick-nutrition{padding:17px}.derick-nutrition p{display:grid;gap:4px}.derick-nutrition p b{font-size:17px}.derick-nutrition p span{font-size:15px}}
 
 .history-controls{display:flex;gap:8px}.history-controls .secondary{min-height:38px;padding:8px 12px}@media(max-width:600px){.journal-history .panel-head{display:grid}.history-controls{width:100%}.history-controls .secondary{flex:1;justify-content:center}}
+
+.fasting-control{margin:0 0 18px;padding:14px 16px;border:1px solid #dbe6ce;border-radius:9px;background:#f7faef}.fasting-control label{max-width:340px}.fasting-control label select{margin-top:7px}.fasting-control p{margin:10px 0 0;color:#587060;font-size:12px;line-height:1.5}@media(max-width:850px){.fasting-control{padding:17px}.fasting-control label{max-width:none}.fasting-control p{font-size:15px}}

@@ -11,6 +11,7 @@ const canonicalPreparer = value => String(value||'').trim().toLowerCase()==='pat
 let meals = [], filtered = [], healthRecords = [], wellnessRecords = [], healthLoaded = false, wellnessLoaded = false, currentView = 'dashboard', page = 0, loaded = false;
 let selectedDay = today();
 let journalHistoryOffset = 0;
+let fastingRangeSelection = 0;
 let lastTodayRefresh = 0;
 const checkedMealDays = new Set();
 const trackerRefreshTimes = new Map();
@@ -101,13 +102,14 @@ function wellnessFor(date){return wellnessRecords.find(record=>record.date===dat
 function renderHealth(){
   const form=$('health-form');if(!form)return;
   const date=form.elements.date.value||today(),current=healthFor(date);
-  const needsDefault=(field,marker)=>!current[field]&&current[marker]!==false&&current[marker]!=='false', defaults={date,distanceWalked:'',distanceUnit:'miles',waterIntake:current.waterIntake||'36',waterUnit:current.waterUnit||'fl oz',bloodSugar:current.bloodSugar||'136',bloodSugarUnit:current.bloodSugarUnit||'mg/dL',weight:current.weight||'212',weightUnit:current.weightUnit||'lb',bloodPressure:current.bloodPressure||'126/89',waterNeedsReview:needsDefault('waterIntake','waterNeedsReview'),bloodSugarNeedsReview:needsDefault('bloodSugar','bloodSugarNeedsReview'),weightNeedsReview:needsDefault('weight','weightNeedsReview'),bloodPressureNeedsReview:needsDefault('bloodPressure','bloodPressureNeedsReview'),...current};
+  const needsDefault=(field,marker)=>!current[field]&&current[marker]!==false&&current[marker]!=='false', defaults={date,distanceWalked:'',distanceUnit:'miles',fasting:current.fasting===true||current.fasting==='true',waterIntake:current.waterIntake||'36',waterUnit:current.waterUnit||'fl oz',bloodSugar:current.bloodSugar||'136',bloodSugarUnit:current.bloodSugarUnit||'mg/dL',weight:current.weight||'212',weightUnit:current.weightUnit||'lb',bloodPressure:current.bloodPressure||'126/89',waterNeedsReview:needsDefault('waterIntake','waterNeedsReview'),bloodSugarNeedsReview:needsDefault('bloodSugar','bloodSugarNeedsReview'),weightNeedsReview:needsDefault('weight','weightNeedsReview'),bloodPressureNeedsReview:needsDefault('bloodPressure','bloodPressureNeedsReview'),...current};
   ['waterIntake','waterUnit','bloodSugar','bloodSugarUnit','weight','weightUnit','bloodPressure'].forEach(field=>{if(!current[field])defaults[field]={waterIntake:'36',waterUnit:'fl oz',bloodSugar:'136',bloodSugarUnit:'mg/dL',weight:'212',weightUnit:'lb',bloodPressure:'126/89'}[field];});
   Object.entries(defaults).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
   const reviews={waterIntake:defaults.waterNeedsReview,bloodSugar:defaults.bloodSugarNeedsReview,weight:defaults.weightNeedsReview,bloodPressure:defaults.bloodPressureNeedsReview};Object.entries(reviews).forEach(([field,needed])=>form.elements[field]?.classList.toggle('needs-review',needed===true||needed==='true'));
+  $('fasting-range').value=String(fastingRangeSelection|| (defaults.fasting?'1':'0'));
   $('health-next').disabled=date>=today();
   const recent=[...healthRecords].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,7);
-  $('health-history').innerHTML=recent.length?`<div class="table-scroll"><table><thead><tr><th>Date</th><th>Pressure</th><th>Sugar</th><th>Weight</th><th>Water</th></tr></thead><tbody>${recent.map(r=>`<tr><td>${formatDate(r.date)}</td><td>${escapeHtml(r.bloodPressure||'—')}</td><td>${escapeHtml(r.bloodSugar||'—')} ${escapeHtml(r.bloodSugar?r.bloodSugarUnit:'')}</td><td>${escapeHtml(r.weight||'—')} ${escapeHtml(r.weight?r.weightUnit:'')}</td><td>${escapeHtml(r.waterIntake||'—')} ${escapeHtml(r.waterIntake?r.waterUnit:'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No health records saved yet.</div>';
+  $('health-history').innerHTML=recent.length?`<div class="table-scroll"><table><thead><tr><th>Date</th><th>Fasting</th><th>Pressure</th><th>Sugar</th><th>Weight</th><th>Water</th></tr></thead><tbody>${recent.map(r=>`<tr><td>${formatDate(r.date)}</td><td>${r.fasting?'Yes':'—'}</td><td>${escapeHtml(r.bloodPressure||'—')}</td><td>${escapeHtml(r.bloodSugar||'—')} ${escapeHtml(r.bloodSugar?r.bloodSugarUnit:'')}</td><td>${escapeHtml(r.weight||'—')} ${escapeHtml(r.weight?r.weightUnit:'')}</td><td>${escapeHtml(r.waterIntake||'—')} ${escapeHtml(r.waterIntake?r.waterUnit:'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No health records saved yet.</div>';
 }
 function renderWellness(){
   const form=$('wellness-form');if(!form)return;
@@ -227,6 +229,11 @@ function openMeal(entry={}) {
   form.elements.namedItem('needsReview').checked=!!entry.needsReview;
   $('form-title').textContent=entry.id?'Edit meal':'Log a meal';$('delete-meal').hidden=!entry.id;$('form-error').textContent='';
   $('meal-dialog').showModal();
+  if(!entry.id)applyFastingDefaults(defaults.date);
+}
+async function applyFastingDefaults(date){
+  try{let record=healthFor(date);if(!record.id){const data=await api('/api/health/date/'+date);const incoming=data.records||[];healthRecords=[...healthRecords.filter(item=>item.date!==date),...incoming];record=incoming[0]||{};}if(record.fasting===true||record.fasting==='true'){const form=$('meal-form');if(!form.elements.derickMeal.value.trim())form.elements.derickMeal.value='Fasting';['calories','saltGrams','sugarGrams'].forEach(field=>{if(!form.elements[field].value)form.elements[field].value='0';});notice('Fasting day: Derick’s meal defaults were applied.');}}
+  catch(error){notice(error.message,true);}
 }
 function updateOptions() {
   const current=$('preparer-filter').value;
@@ -311,7 +318,8 @@ $('meal-form').addEventListener('change',()=>scheduleAutosave($('meal-form'),()=
 ['health-form','wellness-form'].forEach(id=>$(id).addEventListener('input',event=>{if(event.target.name!=='date'){if(id==='health-form')clearHealthReview(event.target.name);scheduleAutosave($(id),()=>true);}}));
 $('health-status').textContent='Autosave is on.';$('wellness-status').textContent='Autosave is on.';
 $('accept-health-defaults').onclick=()=>{const form=$('health-form');['waterNeedsReview','bloodSugarNeedsReview','weightNeedsReview','bloodPressureNeedsReview'].forEach(name=>form.elements[name].value='false');['waterIntake','bloodSugar','weight','bloodPressure'].forEach(name=>form.elements[name].classList.remove('needs-review'));scheduleAutosave(form,()=>true);};
-function setHealthDate(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;$('health-form').elements.namedItem('date').value=date;renderHealth();refreshTrackerDate('health',date);}
+$('fasting-range').onchange=async event=>{const days=Number(event.target.value),start=$('health-form').elements.date.value||today();fastingRangeSelection=days;event.target.disabled=true;try{const records=(await api('/api/health/fasting-range',{method:'PUT',body:JSON.stringify({start,days})})).records;healthRecords=[...healthRecords.filter(old=>!records.some(record=>record.id===old.id)),...records];$('health-form').elements.fasting.value=days>0?'true':'false';renderHealth();notice(days?`${days}-day fasting range saved to Firebase.`:'Fasting removed for the selected day.');}catch(error){$('health-error').textContent=error.message;}finally{event.target.disabled=false;}};
+function setHealthDate(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;fastingRangeSelection=0;$('health-form').elements.namedItem('date').value=date;renderHealth();refreshTrackerDate('health',date);}
 $('health-previous').onclick=()=>setHealthDate(shiftDate($('health-form').elements.namedItem('date').value||today(),-1));
 $('health-next').onclick=()=>setHealthDate(shiftDate($('health-form').elements.namedItem('date').value||today(),1));
 $('health-today').onclick=()=>setHealthDate(today());
