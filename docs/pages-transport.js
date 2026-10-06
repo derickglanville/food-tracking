@@ -41,22 +41,28 @@ window.GatherTransport=(()=>{
    });
    return user ? acceptUser(user) : false;
  }
+ async function currentToken(force=false){
+   const user=authInstance().currentUser;
+   if(!user)throw Error('Your Google sign-in has expired. Reload the app and select Continue with Google before saving.');
+   try{return token=await user.getIdToken(force);}
+   catch(error){if(String(error.code||error.message).includes('securetoken'))throw Error('Google Token Service is blocked for this API key. Add Token Service API to the key restrictions, then sign in again.');throw Error('Your Google sign-in has expired. Reload the app and select Continue with Google before saving.');}
+ }
  async function remote(method,path='',params={},body,collection='food_tracker_meals'){
-   if(!token)throw Error('Sign in with Google before continuing.');
+   await currentToken();
    const url=new URL((collection==='food_tracker_meals'?root:collectionRoot(collection))+path);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
    const send=()=>fetch(url,{method,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},...(body?{body:JSON.stringify(body)}:{})});
    let response,refreshed=false;for(let attempt=0;attempt<4;attempt++){
      try{response=await send();}
      catch{throw Error('Cannot reach Firebase. Your change has not been confirmed. Check your connection.');}
      if(response.status===401&&!refreshed){
-       const user=authInstance().currentUser;
-       if(user){try{token=await user.getIdToken(true);refreshed=true;response=await send();}catch{throw Error('Your Google sign-in expired. Reload the app and sign in again.');}}
+       await currentToken(true);refreshed=true;response=await send();
      }
      if(response.status!==429||attempt===3)break;
      await new Promise(resolve=>setTimeout(resolve,1000*(attempt+1)));
    }
    if(!response.ok){
      let detail='';try{detail=await response.text();}catch{}
+     if(response.status===401){await authInstance().signOut();token='';throw Error('Your Google sign-in expired. Reload the app and select Continue with Google before saving.');}
      if(response.status===429)throw Error('Firebase is temporarily busy. Please wait a minute, then try again.');
      throw Error(`Firebase returned ${response.status}. ${detail.slice(0,160)||'Check Google sign-in and Firestore access.'}`);
    }
