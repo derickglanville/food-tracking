@@ -169,8 +169,12 @@ async function loadHistoryPage(){
   try{const data=await api('/api/meals/range/'+oldest+'/'+newest);meals=[...meals.filter(entry=>entry.date<oldest||entry.date>newest),...data.meals.map(entry=>({...entry,preparer:canonicalPreparer(entry.preparer)}))];sortMeals();updateOptions();render();}
   catch(error){notice(error.message,true);}
 }
+function isSaturday(date){return new Date(date+'T12:00:00').getDay()===6;}
 function renderJournal() {
   $('journal-count').textContent=`${filtered.length.toLocaleString()} meal occasions · grouped by day`;
+  const health=healthFor(selectedDay),range=fastingRangeSelection||health.fastingRangeDays||(health.fasting?'1':'0');
+  $('journal-fasting-start').value=selectedDay;$('journal-fasting-range').value=String(range);
+  $('georgette-saturday-reminder').innerHTML=isSaturday(selectedDay)?'<section class="georgette-reminder" role="note"><b>Georgette’s Saturday diet check</b><span>Record her weight and a short progress note about the modified diet today.</span></section>':'';
   $('journal-list').innerHTML=dayCard()+journalHistoryGrid();
 }
 async function loadMealDay(value){
@@ -325,7 +329,10 @@ $('meal-form').addEventListener('change',()=>scheduleAutosave($('meal-form'),()=
 $('health-status').textContent='Autosave is on.';$('wellness-status').textContent='Autosave is on.';
 $('accept-health-defaults').onclick=()=>{const form=$('health-form');['waterNeedsReview','bloodSugarNeedsReview','weightNeedsReview','bloodPressureNeedsReview'].forEach(name=>form.elements[name].value='false');['waterIntake','bloodSugar','weight','bloodPressure'].forEach(name=>form.elements[name].classList.remove('needs-review'));scheduleAutosave(form,()=>true);};
 $('fasting-start-date').onchange=event=>setHealthDate(event.target.value);
-$('fasting-range').onchange=async event=>{const days=Number(event.target.value),start=$('fasting-start-date').value||$('health-form').elements.date.value||today();fastingRangeSelection=days;event.target.disabled=true;try{const response=await api('/api/health/fasting-range',{method:'PUT',body:JSON.stringify({start,days})}),records=response.records||[],fastingMeals=response.meals||[];healthRecords=[...healthRecords.filter(old=>!records.some(record=>record.id===old.id)),...records];meals=[...meals.filter(old=>!fastingMeals.some(meal=>meal.id===old.id)),...fastingMeals];records.forEach(record=>fastingCheckedDays.add(record.date));sortMeals();updateOptions();applyFilters();$('health-form').elements.fasting.value=days>0?'true':'false';renderHealth();notice(days?`${days}-day fasting range and ${fastingMeals.length} fasting meal entries saved to Firebase.`:'Fasting removed for the selected day.');}catch(error){$('health-error').textContent=error.message;}finally{event.target.disabled=false;}};
+async function saveFastingRange(start,days,control,errorTarget){fastingRangeSelection=days;control.disabled=true;try{const response=await api('/api/health/fasting-range',{method:'PUT',body:JSON.stringify({start,days})}),records=response.records||[],fastingMeals=response.meals||[];healthRecords=[...healthRecords.filter(old=>!records.some(record=>record.id===old.id)),...records];meals=[...meals.filter(old=>!fastingMeals.some(meal=>meal.id===old.id)),...fastingMeals];records.forEach(record=>fastingCheckedDays.add(record.date));sortMeals();updateOptions();applyFilters();$('health-form').elements.fasting.value=days>0?'true':'false';renderHealth();notice(days?`${days}-day fasting range and ${fastingMeals.length} fasting meal entries saved to Firebase.`:'Fasting removed for the selected day.');}catch(error){if(errorTarget)$(errorTarget).textContent=error.message;else notice(error.message,true);}finally{control.disabled=false;}}
+$('fasting-range').onchange=event=>saveFastingRange($('fasting-start-date').value||$('health-form').elements.date.value||today(),Number(event.target.value),event.target,'health-error');
+$('journal-fasting-range').onchange=event=>saveFastingRange($('journal-fasting-start').value||selectedDay||today(),Number(event.target.value),event.target);
+$('journal-fasting-start').onchange=event=>{selectedDay=event.target.value;render();};
 function setHealthDate(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;fastingRangeSelection=0;$('health-form').elements.namedItem('date').value=date;renderHealth();refreshTrackerDate('health',date);}
 $('health-previous').onclick=()=>setHealthDate(shiftDate($('health-form').elements.namedItem('date').value||today(),-1));
 $('health-next').onclick=()=>setHealthDate(shiftDate($('health-form').elements.namedItem('date').value||today(),1));
