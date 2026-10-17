@@ -129,20 +129,27 @@ window.GatherTransport=(()=>{
    const cached=cachedEntries('food_tracker_meals')||[];writeCachedEntries('food_tracker_meals',[...cached.filter(old=>!entries.some(entry=>entry.id===old.id)),...entries]);return entries;
  }
  function fastingMealsFor(dates,fasting=true){return fasting?dates.flatMap(date=>['Breakfast','Lunch','Dinner'].map(mealType=>({id:`fasting_${date.replaceAll('-','')}_${mealType.toLowerCase()}`,date,mealType,meal:'',derickMeal:'Fasting',preparer:'',preparation:'Unspecified',calories:'0',saltGrams:'0',sugarGrams:'0',notes:'Fasting day',source:'Fasting schedule',needsReview:false}))):[];}
+ async function missingFastingMeals(dates){
+   const planned=fastingMealsFor(dates);if(!planned.length)return [];
+   const existing=await dateEntries('food_tracker_meals',dates[0],dates[dates.length-1]);
+   const existingIds=new Set(existing.map(entry=>entry.id));return planned.filter(entry=>!existingIds.has(entry.id));
+ }
+ async function createFastingMeals(meals){
+   for(let position=0;position<meals.length;position+=400){const response=await fetch(`${databaseRoot}:commit`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({writes:meals.slice(position,position+400).map(entry=>({update:{name:`${documentRoot}/${entry.id}`,fields:typedFields(entry)},currentDocument:{exists:false}}))})});if(!response.ok)throw Error(`Firebase returned ${response.status} while restoring fasting meals.`);}
+   const cached=cachedEntries('food_tracker_meals')||[];writeCachedEntries('food_tracker_meals',[...cached,...meals]);return meals;
+ }
  async function ensureFastingMeals(start,days){
    if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!Number.isInteger(days)||days<1||days>14)throw Error('Choose a fasting range from 1 to 14 days.');
-   const meals=fastingMealsFor(Array.from({length:days},(_,index)=>daysBefore(start,-index)));
-   for(let position=0;position<meals.length;position+=400){const response=await fetch(`${databaseRoot}:commit`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({writes:meals.slice(position,position+400).map(entry=>({update:{name:`${documentRoot}/${entry.id}`,fields:typedFields(entry)}}))})});if(!response.ok)throw Error(`Firebase returned ${response.status} while restoring fasting meals.`);}
-   const cached=cachedEntries('food_tracker_meals')||[];writeCachedEntries('food_tracker_meals',[...cached.filter(old=>!meals.some(meal=>meal.id===old.id)),...meals]);return meals;
+   return createFastingMeals(await missingFastingMeals(Array.from({length:days},(_,index)=>daysBefore(start,-index))));
  }
  async function setFastingRange(start,days){
    if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!Number.isInteger(days)||days<0||days>14)throw Error('Choose a fasting range from 0 to 14 days.');
    const dates=Array.from({length:Math.max(1,days)},(_,index)=>daysBefore(start,-index));
    const healthWrites=dates.map((date,index)=>({update:{name:`projects/${config.projectId}/databases/(default)/documents/food_tracker_health/health_${date.replaceAll('-','')}`,fields:{date:{stringValue:date},fasting:{booleanValue:days>0},fastingDaysRemaining:{stringValue:days>0?String(days-index):''},fastingRangeDays:{stringValue:days>0?String(days):''},fastingStartDate:{stringValue:days>0?start:''}}},updateMask:{fieldPaths:['date','fasting','fastingDaysRemaining','fastingRangeDays','fastingStartDate']}}));
-   const meals=fastingMealsFor(dates,days>0);
-   const mealWrites=meals.map(entry=>({update:{name:`${documentRoot}/${entry.id}`,fields:typedFields(entry)}}));
-   const writes=[...healthWrites,...mealWrites];
+   const meals=days?await missingFastingMeals(dates):[];
+   const writes=healthWrites;
    for(let position=0;position<writes.length;position+=400){const response=await fetch(`${databaseRoot}:commit`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({writes:writes.slice(position,position+400)})});if(!response.ok)throw Error(`Firebase returned ${response.status} while saving the fasting range.`);}
+   await createFastingMeals(meals);
    const records=dates.map((date,index)=>({id:'health_'+date.replaceAll('-',''),date,fasting:days>0,fastingDaysRemaining:days>0?String(days-index):'',fastingRangeDays:days>0?String(days):'',fastingStartDate:days>0?start:''})),cached=cachedEntries('food_tracker_health')||[];writeCachedEntries('food_tracker_health',[...cached.filter(old=>!records.some(record=>record.id===old.id)),...records]);
    const mealCache=cachedEntries('food_tracker_meals')||[];if(meals.length)writeCachedEntries('food_tracker_meals',[...mealCache.filter(old=>!meals.some(meal=>meal.id===old.id)),...meals]);return {records,meals};
  }
