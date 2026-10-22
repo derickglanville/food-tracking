@@ -11,6 +11,7 @@ const canonicalPreparer = value => String(value||'').trim().toLowerCase()==='pat
 let meals = [], filtered = [], healthRecords = [], wellnessRecords = [], healthLoaded = false, wellnessLoaded = false, currentView = 'dashboard', page = 0, loaded = false;
 let selectedDay = today();
 let journalHistoryOffset = 0;
+let popoutHistoryOffset = 0;
 let fastingRangeSelection = 0;
 let lastTodayRefresh = 0;
 const checkedMealDays = new Set();
@@ -156,19 +157,22 @@ function dayCard(){
     return `<section class="day-meal" data-meal-type="${type}"><div class="day-meal-heading"><span class="meal-icon ${type}">${icons[type]}</span><h3>${type}</h3><span class="meal-state">${rows.length?'Recorded':'Not recorded'}</span></div>${rows.length?rows.map(e=>`<div class="day-entry"><h4>${escapeHtml(e.meal||'Main meal not recorded')}</h4>${e.derickMeal?`<p class="day-other"><b>Derick</b> ${escapeHtml(e.derickMeal.toLowerCase()==='same'?(e.meal||'Same (main meal not recorded)'):e.derickMeal)}</p>`:''}<p class="day-preparer">Prepared / bought by <b>${escapeHtml(e.preparer||'Not recorded')}</b></p>${e.notes?`<p class="day-notes">${escapeHtml(e.notes)}</p>`:''}${e.needsReview?'<span class="review-badge">Review preparer</span>':''}${hasMealFilters()&&matchIds.has(e.id)?'<span class="match-badge">Matches search</span>':''}<button class="secondary" data-edit="${escapeHtml(e.id)}" aria-label="Edit ${type} on ${selectedDay}">Edit ${type.toLowerCase()} ↗</button></div>`).join(''):`<div class="day-blank"><p>A space for your ${type.toLowerCase()}.</p><button class="secondary" data-day-add="${type}" data-date="${selectedDay}">＋ Add ${type.toLowerCase()}</button></div>`}</section>`;
   }).join('')}</div><div class="day-card-footer"><span>${entries.length} saved meal ${entries.length===1?'entry':'entries'} · ${hasMealFilters()?`${days.length} matching days`:'A fresh card is ready every day'}</span><button class="text-button" data-day-add="Snack" data-date="${selectedDay}">＋ Add snack</button></div></article>`;
 }
+function historyCards(dates){return dates.map(date=>{
+  const entries=meals.filter(entry=>entry.date===date), label=new Date(date+'T12:00:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+  const summary=['Breakfast','Lunch','Dinner'].map(type=>{const entry=entries.find(item=>item.mealType===type);return `<li><span>${icons[type]} ${type}</span><b>${escapeHtml(entry?(entry.meal||entry.derickMeal||'Recorded'):'—')}</b></li>`;}).join('');
+  return `<button type="button" class="journal-day ${entries.length?'has-meals':''}" data-journal-day="${date}" aria-label="Open meals for ${label}"><header><span class="journal-day-date">${label}</span><strong class="journal-day-count">${entries.length}/3</strong></header><ul>${summary}</ul></button>`;
+}).join('');}
 function journalHistoryGrid(){
   const dates=Array.from({length:7},(_,index)=>shiftDate(selectedDay,-(journalHistoryOffset+index+1)));
-  return `<section class="journal-history"><div class="panel-head"><div><h2>Previous daily meals</h2><p class="muted">Choose a card to open that day’s meal record.</p></div><div class="history-controls"><button type="button" class="secondary" data-history-shift="7">← Previous</button><button type="button" class="secondary" data-history-shift="-7" ${journalHistoryOffset<=0?'disabled':''}>Next →</button></div></div><div class="journal-day-grid">${dates.map(date=>{
-    const entries=meals.filter(entry=>entry.date===date), label=new Date(date+'T12:00:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
-    const summary=['Breakfast','Lunch','Dinner'].map(type=>{const entry=entries.find(item=>item.mealType===type);return `<li><span>${icons[type]} ${type}</span><b>${escapeHtml(entry?(entry.meal||entry.derickMeal||'Recorded'):'—')}</b></li>`;}).join('');
-    return `<button type="button" class="journal-day ${entries.length?'has-meals':''}" data-journal-day="${date}" aria-label="Open meals for ${label}"><header><span class="journal-day-date">${label}</span><strong class="journal-day-count">${entries.length}/3</strong></header><ul>${summary}</ul></button>`;
-  }).join('')}</div></section>`;
+  return `<section class="journal-history"><div class="panel-head"><div><h2>Previous daily meals</h2><p class="muted">Choose a card to open that day’s meal record.</p></div><div class="history-controls"><button type="button" class="secondary" data-open-history>⤢ Pop out</button><button type="button" class="secondary" data-history-shift="7">← Previous</button><button type="button" class="secondary" data-history-shift="-7" ${journalHistoryOffset<=0?'disabled':''}>Next →</button></div></div><div class="journal-day-grid">${historyCards(dates)}</div></section>`;
 }
-async function loadHistoryPage(){
-  const newest=shiftDate(selectedDay,-(journalHistoryOffset+1)),oldest=shiftDate(selectedDay,-(journalHistoryOffset+7));
-  try{const data=await api('/api/meals/range/'+oldest+'/'+newest);meals=[...meals.filter(entry=>entry.date<oldest||entry.date>newest),...data.meals.map(entry=>({...entry,preparer:canonicalPreparer(entry.preparer)}))];sortMeals();updateOptions();render();}
+function renderHistoryPopout(){const dates=Array.from({length:28},(_,index)=>shiftDate(selectedDay,-(popoutHistoryOffset+index+1)));$('history-popout-content').innerHTML=`<div class="history-controls popout-history-controls"><button type="button" class="secondary" data-popout-history-shift="28">← Previous 28 days</button><button type="button" class="secondary" data-popout-history-shift="-28" ${popoutHistoryOffset<=0?'disabled':''}>Next 28 days →</button><span class="muted">Showing ${formatDate(dates.at(-1))} through ${formatDate(dates[0])}</span></div><div class="journal-day-grid popout-history-grid">${historyCards(dates)}</div>`;}
+async function loadHistoryRange(offset,count,popout=false){
+  const newest=shiftDate(selectedDay,-(offset+1)),oldest=shiftDate(selectedDay,-(offset+count));
+  try{const data=await api('/api/meals/range/'+oldest+'/'+newest);meals=[...meals.filter(entry=>entry.date<oldest||entry.date>newest),...data.meals.map(entry=>({...entry,preparer:canonicalPreparer(entry.preparer)}))];sortMeals();updateOptions();if(popout)renderHistoryPopout();else render();}
   catch(error){notice(error.message,true);}
 }
+async function loadHistoryPage(){return loadHistoryRange(journalHistoryOffset,7);}
 function isSaturday(date){return new Date(date+'T12:00:00').getDay()===6;}
 function renderJournal() {
   $('journal-count').textContent=`${filtered.length.toLocaleString()} meal occasions · grouped by day`;
@@ -281,8 +285,10 @@ document.addEventListener('click',event=>{
   const dayAdd=event.target.closest('[data-day-add]');if(dayAdd)openMeal({date:dayAdd.dataset.date,mealType:dayAdd.dataset.dayAdd});
   const dayShift=event.target.closest('[data-day-shift]');if(dayShift){const days=availableDays();selectedDay=days[days.indexOf(selectedDay)+Number(dayShift.dataset.dayShift)]||selectedDay;render();}
   if(event.target.closest('[data-day-today]'))goToDay(today());
-  const journalDay=event.target.closest('[data-journal-day]');if(journalDay)goToDay(journalDay.dataset.journalDay);
+  const journalDay=event.target.closest('[data-journal-day]');if(journalDay){if($('history-dialog').open)$('history-dialog').close();goToDay(journalDay.dataset.journalDay);}
   const historyShift=event.target.closest('[data-history-shift]');if(historyShift){journalHistoryOffset=Math.max(0,journalHistoryOffset+Number(historyShift.dataset.historyShift));render();loadHistoryPage();}
+  if(event.target.closest('[data-open-history]')){popoutHistoryOffset=0;renderHistoryPopout();$('history-dialog').showModal();loadHistoryRange(popoutHistoryOffset,28,true);}
+  const popoutShift=event.target.closest('[data-popout-history-shift]');if(popoutShift){popoutHistoryOffset=Math.max(0,popoutHistoryOffset+Number(popoutShift.dataset.popoutHistoryShift));renderHistoryPopout();loadHistoryRange(popoutHistoryOffset,28,true);}
   const edit=event.target.closest('[data-edit]');if(edit)openMeal(meals.find(e=>e.id===edit.dataset.edit));
   const recipe=event.target.closest('[data-recipe]');if(recipe){const r=recipes[Number(recipe.dataset.recipe)];openMeal({meal:r.name,mealType:r.type,preparation:'Home cooked'});}
 });
@@ -297,6 +303,7 @@ function refreshActiveTracker(){if(currentView==='health')refreshTrackerDate('he
 window.addEventListener('focus',()=>{checkNewDay();refreshToday(true);refreshActiveTracker();});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkNewDay();refreshToday(true);refreshActiveTracker();}});
 $('close-dialog').onclick=()=>$('meal-dialog').close();
+$('close-history-dialog').onclick=()=>$('history-dialog').close();
 function clearHealthReview(field){const marker={waterIntake:'waterNeedsReview',waterUnit:'waterNeedsReview',bloodSugar:'bloodSugarNeedsReview',bloodSugarUnit:'bloodSugarNeedsReview',weight:'weightNeedsReview',weightUnit:'weightNeedsReview',bloodPressure:'bloodPressureNeedsReview'}[field];if(marker){const form=$('health-form');form.elements[marker].value='false';const inputField={waterUnit:'waterIntake',bloodSugarUnit:'bloodSugar',weightUnit:'weight'}[field]||field;form.elements[inputField]?.classList.remove('needs-review');}}
 const autosaveTimers={};
 function scheduleAutosave(form,canSave){
