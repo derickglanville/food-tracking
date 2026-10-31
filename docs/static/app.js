@@ -13,6 +13,8 @@ let selectedDay = today();
 let journalHistoryOffset = 0;
 let popoutHistoryOffset = 0;
 let fastingRangeSelection = 0;
+const georgetteProgramStart='2026-09-26';
+let georgetteWeightWeeks=[];
 let lastTodayRefresh = 0;
 const checkedMealDays = new Set();
 const trackerRefreshTimes = new Map();
@@ -173,12 +175,19 @@ async function loadHistoryRange(offset,count,popout=false){
   catch(error){notice(error.message,true);}
 }
 async function loadHistoryPage(){return loadHistoryRange(journalHistoryOffset,7);}
+function programWeekCount(){return Math.max(6,Math.floor((new Date(today()+'T12:00:00')-new Date(georgetteProgramStart+'T12:00:00'))/(7*86400000))+1);}
+function defaultGeorgetteWeightWeeks(){return Array.from({length:programWeekCount()},(_,index)=>({week:index+1,date:shiftDate(georgetteProgramStart,index*7),weight:'',status:'Not recorded',notes:''}));}
+function mergeGeorgetteWeeks(saved=[]){const byWeek=new Map(saved.map(item=>[Number(item.week),item]));georgetteWeightWeeks=defaultGeorgetteWeightWeeks().map(base=>({...base,...(byWeek.get(base.week)||{})}));}
+function weightChange(index){const value=Number(georgetteWeightWeeks[index]?.weight),previous=Number(georgetteWeightWeeks[index-1]?.weight);if(!Number.isFinite(value)||!Number.isFinite(previous))return '—';const change=value-previous;return `${change>0?'+':''}${change.toFixed(1)} lb`;}
+function renderGeorgetteWeightTracker(){const rows=$('georgette-weight-rows');if(!rows)return;const current=programWeekCount(),latest=[...georgetteWeightWeeks].reverse().find(item=>item.weight),first=georgetteWeightWeeks.find(item=>item.weight);const total=latest&&first&&latest.week!==first.week?Number(latest.weight)-Number(first.weight):null;$('georgette-week-summary').textContent=`Week ${current} of the program · expand to record progress`;$('georgette-weight-summary').textContent=latest?`Latest weight: ${latest.weight} lb${total!==null&&Number.isFinite(total)?` · ${total>0?'+':''}${total.toFixed(1)} lb since Week ${first.week}`:''}`:'No weight recorded yet.';rows.innerHTML=georgetteWeightWeeks.map((entry,index)=>`<tr><td><b>${entry.week}</b></td><td>${formatDate(entry.date)}</td><td><input aria-label="Week ${entry.week} weight" data-georgette-week="${entry.week}" data-georgette-field="weight" type="number" min="0" step="0.1" value="${escapeHtml(entry.weight)}" placeholder="—"></td><td>${weightChange(index)}</td><td><select aria-label="Week ${entry.week} status" data-georgette-week="${entry.week}" data-georgette-field="status">${['Not recorded','On track','Needs attention','Goal met'].map(status=>`<option ${entry.status===status?'selected':''}>${status}</option>`).join('')}</select></td><td><input aria-label="Week ${entry.week} progress notes" data-georgette-week="${entry.week}" data-georgette-field="notes" maxlength="300" value="${escapeHtml(entry.notes)}" placeholder="Optional note"></td></tr>`).join('');}
+async function loadGeorgetteWeightTracker(){try{const tracker=(await api('/api/georgette-weight')).tracker;let saved=[];try{saved=tracker?.weeks?JSON.parse(tracker.weeks):[];}catch{}mergeGeorgetteWeeks(Array.isArray(saved)?saved:[]);renderGeorgetteWeightTracker();}catch(error){$('georgette-weight-status').textContent=error.message;}}
 function isSaturday(date){return new Date(date+'T12:00:00').getDay()===6;}
 function renderJournal() {
   $('journal-count').textContent=`${filtered.length.toLocaleString()} meal occasions · grouped by day`;
   const health=healthFor(selectedDay),range=fastingRangeSelection||health.fastingRangeDays||(health.fasting?'1':'0');
   $('journal-fasting-start').value=selectedDay;$('journal-fasting-range').value=String(range);
   $('georgette-saturday-reminder').innerHTML=isSaturday(selectedDay)?'<section class="georgette-reminder" role="note"><b>Georgette’s Saturday diet check</b><span>Record her weight and a short progress note about the modified diet today.</span></section>':'';
+  renderGeorgetteWeightTracker();
   $('journal-list').innerHTML=dayCard()+journalHistoryGrid();
 }
 async function loadMealDay(value){
@@ -260,7 +269,7 @@ function applyMeals(data){
   meals=data.meals.map(entry=>({...entry,preparer:canonicalPreparer(entry.preparer)}));meals.forEach(entry=>checkedMealDays.add(entry.date));checkedMealDays.add(today());sortMeals();loaded=true;updateOptions();applyFilters();
 }
 async function load() {
-  try {const data=await api('/api/meals');applyMeals(data);
+  try {const data=await api('/api/meals');applyMeals(data);await loadGeorgetteWeightTracker();
     if(data.storageMode==='preview'){
       $('connection').textContent='Spreadsheet preview';$('sync-status').textContent='Read-only local preview';
       notice('Spreadsheet preview · Firebase import approval is pending. You can explore your history and meal ideas; changes cannot be saved yet.');
@@ -302,6 +311,7 @@ setInterval(checkNewDay,30000);
 function refreshActiveTracker(){if(currentView==='health')refreshTrackerDate('health',$('health-form').elements.date.value||today());if(currentView==='wellness')refreshTrackerDate('wellness',$('wellness-form').elements.date.value||today());}
 window.addEventListener('focus',()=>{checkNewDay();refreshToday(true);refreshActiveTracker();});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkNewDay();refreshToday(true);refreshActiveTracker();}});
+$('georgette-weight-form').onsubmit=async event=>{event.preventDefault();const form=event.target;georgetteWeightWeeks=georgetteWeightWeeks.map(item=>{const weight=form.querySelector(`[data-georgette-week="${item.week}"][data-georgette-field="weight"]`)?.value||'',status=form.querySelector(`[data-georgette-week="${item.week}"][data-georgette-field="status"]`)?.value||'Not recorded',notes=form.querySelector(`[data-georgette-week="${item.week}"][data-georgette-field="notes"]`)?.value||'';return {...item,weight,status,notes};});const button=form.querySelector('button[type="submit"]');button.disabled=true;$('georgette-weight-status').textContent='Saving to Firebase…';try{await api('/api/georgette-weight',{method:'PUT',body:JSON.stringify({weeks:georgetteWeightWeeks})});$('georgette-weight-status').textContent='Saved to Firebase.';renderGeorgetteWeightTracker();}catch(error){$('georgette-weight-status').textContent=error.message;}finally{button.disabled=false;}};
 $('close-dialog').onclick=()=>$('meal-dialog').close();
 $('close-history-dialog').onclick=()=>$('history-dialog').close();
 function clearHealthReview(field){const marker={waterIntake:'waterNeedsReview',waterUnit:'waterNeedsReview',bloodSugar:'bloodSugarNeedsReview',bloodSugarUnit:'bloodSugarNeedsReview',weight:'weightNeedsReview',weightUnit:'weightNeedsReview',bloodPressure:'bloodPressureNeedsReview'}[field];if(marker){const form=$('health-form');form.elements[marker].value='false';const inputField={waterUnit:'waterIntake',bloodSugarUnit:'bloodSugar',weightUnit:'weight'}[field]||field;form.elements[inputField]?.classList.remove('needs-review');}}
