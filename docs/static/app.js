@@ -125,10 +125,27 @@ function renderWellness(){
   const date=form.elements.date.value||today(),current=wellnessFor(date);
   Object.entries({date,bowelMovement:'',time:'',notes:'',...current}).forEach(([key,value])=>{if(form.elements[key])form.elements[key].value=value;});
   $('wellness-next').disabled=date>=today();
-  const days=Array.from({length:7},(_,index)=>shiftDate(today(),index-6));
-  $('wellness-week-grid').innerHTML=days.map(date=>{const record=wellnessFor(date),label=new Date(date+'T12:00:00').toLocaleDateString(undefined,{weekday:'short'});return `<article class="wellness-day ${record.bowelMovement==='Yes'?'wellness-yes':record.bowelMovement==='No'?'wellness-no':'wellness-empty'}"><span>${label}</span><b>${record.bowelMovement||'—'}</b><small>${new Date(date+'T12:00:00').toLocaleDateString(undefined,{month:'numeric',day:'numeric'})}</small></article>`;}).join('');
-  const recent=[...wellnessRecords].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,14);
-  $('wellness-history').innerHTML=recent.length?`<div class="table-scroll"><table><thead><tr><th>Date</th><th>Bowel movement</th><th>Time</th><th>Notes</th></tr></thead><tbody>${recent.map(r=>`<tr><td>${formatDate(r.date)}</td><td>${escapeHtml(r.bowelMovement)}</td><td>${escapeHtml(r.time||'—')}</td><td>${escapeHtml(r.notes||'—')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">No wellness checks saved yet.</div>';
+  const recentDays = Array.from({length:14}, (_, index) => {
+    const date = shiftDate(today(), -index);
+    const record = wellnessFor(date);
+    return {
+      date,
+      status: record.bowelMovement || 'Undetermined',
+      time: record.time,
+      notes: record.notes
+    };
+  });
+  $('wellness-week-grid').innerHTML = recentDays.slice(0, 7).reverse().map(({date, status}) => {
+    const day = new Date(date + 'T12:00:00');
+    const label = day.toLocaleDateString(undefined, {weekday:'short'});
+    const shortDate = day.toLocaleDateString(undefined, {month:'numeric', day:'numeric'});
+    const style = status === 'Yes' ? 'wellness-yes' : status === 'No' ? 'wellness-no' : 'wellness-empty';
+    return `<article class="wellness-day ${style}"><span>${label}</span><b>${escapeHtml(status)}</b><small>${shortDate}</small></article>`;
+  }).join('');
+  const rows = recentDays.map(({date, status, time, notes}) =>
+    `<tr><td>${formatDate(date)}</td><td>${escapeHtml(status)}</td><td>${escapeHtml(time || '—')}</td><td>${escapeHtml(notes || '—')}</td></tr>`
+  ).join('');
+  $('wellness-history').innerHTML = `<div class="table-scroll"><table><thead><tr><th>Date</th><th>Bowel movement</th><th>Time</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function shiftDate(value,amount) {
   const date=new Date(value+'T12:00:00'); date.setDate(date.getDate()+amount);
