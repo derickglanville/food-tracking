@@ -147,6 +147,49 @@ function renderWellness(){
   ).join('');
   $('wellness-history').innerHTML = `<div class="table-scroll"><table><thead><tr><th>Date</th><th>Bowel movement</th><th>Time</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
+const wellnessHistoryPageSize = 28;
+let wellnessHistoryOffset = 0;
+let wellnessHistoryAnchor;
+let wellnessHistoryRequest = 0;
+let wellnessHistoryRecords = [];
+
+async function loadWellnessHistoryPage() {
+  const request = ++wellnessHistoryRequest;
+  const newest = shiftDate(wellnessHistoryAnchor, -wellnessHistoryOffset);
+  const oldest = shiftDate(newest, 1 - wellnessHistoryPageSize);
+  const cards = $('wellness-history-cards');
+  const message = $('wellness-history-message');
+  $('newer-wellness-history').disabled = wellnessHistoryOffset === 0;
+  $('wellness-history-range').textContent = `${formatDate(oldest)} – ${formatDate(newest)}`;
+  cards.replaceChildren();
+  cards.scrollTop = 0;
+  message.textContent = 'Loading wellness checks…';
+  message.hidden = false;
+
+  try {
+    const {records} = await api(`/api/wellness/range/${oldest}/${newest}`);
+    if (request !== wellnessHistoryRequest || !$('wellness-history-dialog').open) return;
+    wellnessHistoryRecords = records;
+    const byDate = new Map(records.map(record => [record.date, record]));
+    cards.innerHTML = Array.from({length: wellnessHistoryPageSize}, (_, index) => {
+      const date = shiftDate(newest, -index);
+      const {bowelMovement, time, notes} = byDate.get(date) || {};
+      const status = bowelMovement || 'Undetermined';
+      const color = status === 'Yes' ? 'wellness-yes' : status === 'No' ? 'wellness-no' : 'wellness-empty';
+      const label = new Date(date + 'T12:00:00').toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'});
+      return `<button type="button" class="journal-day wellness-history-card ${color}" data-wellness-day="${date}">
+        <span>${label}</span><b>${escapeHtml(status)}</b>
+        ${time ? `<small>Time: ${escapeHtml(time)}</small>` : ''}
+        ${notes ? `<small>${escapeHtml(notes)}</small>` : ''}
+      </button>`;
+    }).join('');
+    message.hidden = true;
+  } catch (error) {
+    if (request !== wellnessHistoryRequest || !$('wellness-history-dialog').open) return;
+    message.textContent = `Could not load wellness checks. ${error.message}`;
+  }
+}
+
 function shiftDate(value,amount) {
   const date=new Date(value+'T12:00:00'); date.setDate(date.getDate()+amount);
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
@@ -331,6 +374,31 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkNewD
 $('georgette-weight-form').onsubmit=async event=>{event.preventDefault();const form=event.target;georgetteWeightWeeks=georgetteWeightWeeks.map(item=>{const weight=form.querySelector(`[data-georgette-week="${item.week}"][data-georgette-field="weight"]`)?.value||'',status=form.querySelector(`[data-georgette-week="${item.week}"][data-georgette-field="status"]`)?.value||'Not recorded',notes=form.querySelector(`[data-georgette-week="${item.week}"][data-georgette-field="notes"]`)?.value||'';return {...item,weight,status,notes};});const button=form.querySelector('button[type="submit"]');button.disabled=true;$('georgette-weight-status').textContent='Saving to Firebase…';try{await api('/api/georgette-weight',{method:'PUT',body:JSON.stringify({weeks:georgetteWeightWeeks})});$('georgette-weight-status').textContent='Saved to Firebase.';renderGeorgetteWeightTracker();}catch(error){$('georgette-weight-status').textContent=error.message;}finally{button.disabled=false;}};
 $('close-dialog').onclick=()=>$('meal-dialog').close();
 $('close-history-dialog').onclick=()=>$('history-dialog').close();
+$('open-wellness-history').onclick = () => {
+  wellnessHistoryAnchor = today();
+  wellnessHistoryOffset = 0;
+  $('wellness-history-dialog').showModal();
+  loadWellnessHistoryPage();
+};
+$('close-wellness-history').onclick = () => $('wellness-history-dialog').close();
+$('older-wellness-history').onclick = () => {
+  wellnessHistoryOffset += wellnessHistoryPageSize;
+  loadWellnessHistoryPage();
+};
+$('newer-wellness-history').onclick = () => {
+  wellnessHistoryOffset = Math.max(0, wellnessHistoryOffset - wellnessHistoryPageSize);
+  loadWellnessHistoryPage();
+};
+$('wellness-history-cards').onclick = event => {
+  const card = event.target.closest('[data-wellness-day]');
+  if (!card) return;
+  const date = card.dataset.wellnessDay;
+  wellnessRecords = wellnessRecords.filter(record => record.date !== date)
+    .concat(wellnessHistoryRecords.filter(record => record.date === date));
+  $('wellness-history-dialog').close();
+  setWellnessDate(date);
+  $('wellness-form').elements.date.focus();
+};
 function clearHealthReview(field){const marker={waterIntake:'waterNeedsReview',waterUnit:'waterNeedsReview',bloodSugar:'bloodSugarNeedsReview',bloodSugarUnit:'bloodSugarNeedsReview',weight:'weightNeedsReview',weightUnit:'weightNeedsReview',bloodPressure:'bloodPressureNeedsReview'}[field];if(marker){const form=$('health-form');form.elements[marker].value='false';const inputField={waterUnit:'waterIntake',bloodSugarUnit:'bloodSugar',weightUnit:'weight'}[field]||field;form.elements[inputField]?.classList.remove('needs-review');}}
 const autosaveTimers={};
 function scheduleAutosave(form,canSave){
