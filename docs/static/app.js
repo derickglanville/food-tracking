@@ -10,6 +10,8 @@ function nutritionSummary(entries){const derickEntries=entries.filter(entry=>Str
 const canonicalPreparer = value => String(value||'').trim().toLowerCase()==='pat' ? 'Georgette' : String(value||'').trim();
 let meals = [], filtered = [], healthRecords = [], wellnessRecords = [], healthLoaded = false, wellnessLoaded = false, currentView = 'dashboard', page = 0, loaded = false;
 let selectedDay = today();
+let mealsReadOnly = false;
+const centrumSilverPending = new Map();
 let journalHistoryOffset = 0;
 let popoutHistoryOffset = 0;
 let fastingRangeSelection = 0;
@@ -204,6 +206,14 @@ function availableDays(){
   const days=[];for(let d=first;d<=last;d=shiftDate(d,1))days.push(d);
   return days;
 }
+function breakfastCentrumSilver(entry) {
+  const pending = centrumSilverPending.has(entry.id);
+  const checked = centrumSilverPending.get(entry.id) ?? entry.centrumSilver === true;
+  return `<label class="checkbox breakfast-centrum">
+    <input type="checkbox" data-breakfast-centrum="${escapeHtml(entry.id)}" ${checked?'checked':''} ${pending||mealsReadOnly?'disabled':''}>
+    Derick took Centrum Silver
+  </label>`;
+}
 function dayCard(){
   const days=availableDays();
   if(!days.length)return '<div class="empty"><b>No days match these filters.</b>Clear your filters or return to today.<br><button class="secondary" data-day-today>Today</button></div>';
@@ -216,7 +226,7 @@ function dayCard(){
   <article class="day-card" data-date="${selectedDay}" aria-label="Meals for ${label}"><header class="day-card-header"><div><p class="eyebrow">${selectedDay===today()?'TODAY’S CARD':'DAILY MEAL CARD'}</p><h2>${label}</h2><p>${complete} of 3 meals recorded${hasMealFilters()?' · Showing the full day for your matching meals':''}</p></div><span class="day-progress" aria-label="${complete} of 3 meals recorded">${complete}/3</span></header>
   ${fastingBanner(selectedDay)}${nutritionSummary(entries)}<div class="day-meals">${types.map(type=>{
     const rows=entries.filter(e=>e.mealType===type);
-    return `<section class="day-meal" data-meal-type="${type}"><div class="day-meal-heading"><span class="meal-icon ${type}">${icons[type]}</span><h3>${type}</h3><span class="meal-state">${rows.length?'Recorded':'Not recorded'}</span></div>${rows.length?rows.map(e=>`<div class="day-entry"><h4>${escapeHtml(e.meal||'Main meal not recorded')}</h4>${e.derickMeal?`<p class="day-other"><b>Derick</b> ${escapeHtml(e.derickMeal.toLowerCase()==='same'?(e.meal||'Same (main meal not recorded)'):e.derickMeal)}</p>`:''}${e.mealType==='Breakfast'&&e.centrumSilver===true?'<p class="day-other"><b>Derick</b> ✓ Centrum Silver taken</p>':''}<p class="day-preparer">Prepared / bought by <b>${escapeHtml(e.preparer||'Not recorded')}</b></p>${e.notes?`<p class="day-notes">${escapeHtml(e.notes)}</p>`:''}${e.needsReview?'<span class="review-badge">Review preparer</span>':''}${hasMealFilters()&&matchIds.has(e.id)?'<span class="match-badge">Matches search</span>':''}<button class="secondary" data-edit="${escapeHtml(e.id)}" aria-label="Edit ${type} on ${selectedDay}">Edit ${type.toLowerCase()} ↗</button></div>`).join(''):`<div class="day-blank"><p>A space for your ${type.toLowerCase()}.</p><button class="secondary" data-day-add="${type}" data-date="${selectedDay}">＋ Add ${type.toLowerCase()}</button></div>`}</section>`;
+    return `<section class="day-meal" data-meal-type="${type}"><div class="day-meal-heading"><span class="meal-icon ${type}">${icons[type]}</span><h3>${type}</h3><span class="meal-state">${rows.length?'Recorded':'Not recorded'}</span></div>${rows.length?rows.map(e=>`<div class="day-entry"><h4>${escapeHtml(e.meal||'Main meal not recorded')}</h4>${e.derickMeal?`<p class="day-other"><b>Derick</b> ${escapeHtml(e.derickMeal.toLowerCase()==='same'?(e.meal||'Same (main meal not recorded)'):e.derickMeal)}</p>`:''}${type==='Breakfast'?breakfastCentrumSilver(e):''}<p class="day-preparer">Prepared / bought by <b>${escapeHtml(e.preparer||'Not recorded')}</b></p>${e.notes?`<p class="day-notes">${escapeHtml(e.notes)}</p>`:''}${e.needsReview?'<span class="review-badge">Review preparer</span>':''}${hasMealFilters()&&matchIds.has(e.id)?'<span class="match-badge">Matches search</span>':''}<button class="secondary" data-edit="${escapeHtml(e.id)}" aria-label="Edit ${type} on ${selectedDay}">Edit ${type.toLowerCase()} ↗</button></div>`).join(''):`<div class="day-blank"><p>A space for your ${type.toLowerCase()}.</p><button class="secondary" data-day-add="${type}" data-date="${selectedDay}">＋ Add ${type.toLowerCase()}</button></div>`}</section>`;
   }).join('')}</div><div class="day-card-footer"><span>${entries.length} saved meal ${entries.length===1?'entry':'entries'} · ${hasMealFilters()?`${days.length} matching days`:'A fresh card is ready every day'}</span><button class="text-button" data-day-add="Snack" data-date="${selectedDay}">＋ Add snack</button></div></article>`;
 }
 function historyCards(dates){return dates.map(date=>{
@@ -312,6 +322,10 @@ function updateCentrumSilverOption() {
   form.elements.namedItem('centrumSilver').disabled = !breakfast;
 }
 function openMeal(entry={}) {
+  if (centrumSilverPending.has(entry.id)) {
+    notice('Saving Derick’s Centrum Silver check. Try opening breakfast again in a moment.');
+    return;
+  }
   const form=$('meal-form');form.reset();
   const defaults={id:'',date:today(),mealType:'Dinner',meal:'',derickMeal:'',preparer:'',preparation:'Unspecified',calories:'',saltGrams:'',sugarGrams:'',notes:'',source:'Manual entry',...entry};
   Object.entries(defaults).forEach(([key,value])=>{if(form.elements.namedItem(key)) form.elements.namedItem(key).value=value;});
@@ -334,6 +348,7 @@ function updateOptions() {
   $('preparer-options').innerHTML=names.map(n=>`<option value="${escapeHtml(n)}"></option>`).join('');
 }
 function applyMeals(data){
+  if (data.storageMode) mealsReadOnly = data.storageMode === 'preview';
   meals=data.meals.map(entry=>({...entry,preparer:canonicalPreparer(entry.preparer)}));meals.forEach(entry=>checkedMealDays.add(entry.date));checkedMealDays.add(today());sortMeals();loaded=true;updateOptions();applyFilters();
 }
 async function load() {
@@ -374,7 +389,43 @@ document.addEventListener('click',event=>{
 $('refresh-today').onclick=()=>refreshToday();
 $('rename-pat').onclick=async()=>{const button=$('rename-pat');button.disabled=true;try{const updated=(await api('/api/meals/rename-preparer',{method:'POST',body:JSON.stringify({from:'Pat',to:'Georgette'})})).meals;meals=[...meals.filter(old=>!updated.some(entry=>entry.id===old.id)),...updated.map(entry=>({...entry,preparer:canonicalPreparer(entry.preparer)}))];sortMeals();updateOptions();applyFilters();notice(updated.length?`${updated.length} meal ${updated.length===1?'record was':'records were'} updated from Pat to Georgette.`:'No meal records prepared by Pat were found.');}catch(error){notice(error.message,true);}finally{button.disabled=false;}};
 $('reset').onclick=()=>{$('search').value='';$('period').value='all';$('type-filter').value='';$('preparer-filter').value='';$('from').value='';$('to').value='';applyFilters();};
-document.addEventListener('change',event=>{if(event.target.matches('[data-day-date]'))goToDay(event.target.value);});
+function syncBreakfastCentrumSilver(id, checked, disabled) {
+  document.querySelectorAll('[data-breakfast-centrum]').forEach(checkbox => {
+    if (checkbox.dataset.breakfastCentrum !== id) return;
+    checkbox.checked = checked;
+    checkbox.disabled = disabled;
+  });
+}
+
+async function saveBreakfastCentrumSilver(checkbox) {
+  const id = checkbox.dataset.breakfastCentrum;
+  const entry = meals.find(meal => meal.id === id && meal.mealType === 'Breakfast');
+  if (!entry || mealsReadOnly || centrumSilverPending.has(id)) return;
+
+  const checked = checkbox.checked;
+  centrumSilverPending.set(id, checked);
+  syncBreakfastCentrumSilver(id, checked, true);
+  try {
+    const path = '/api/meals/' + encodeURIComponent(id);
+    const saved = window.GatherTransport
+      ? await api(path + '/centrum-silver', {method:'PATCH', body:JSON.stringify({centrumSilver:checked})})
+      : await api(path, {method:'PUT', body:JSON.stringify({...entry, centrumSilver:checked})});
+    const current = meals.find(meal => meal.id === id);
+    if (current) current.centrumSilver = saved.centrumSilver;
+    notice('Derick’s Centrum Silver check saved.');
+  } catch (error) {
+    notice('Centrum Silver could not be saved. ' + error.message, true);
+  } finally {
+    centrumSilverPending.delete(id);
+    const current = meals.find(meal => meal.id === id);
+    syncBreakfastCentrumSilver(id, current?.centrumSilver === true, mealsReadOnly);
+  }
+}
+
+document.addEventListener('change', event => {
+  if (event.target.matches('[data-day-date]')) goToDay(event.target.value);
+  if (event.target.matches('[data-breakfast-centrum]')) saveBreakfastCentrumSilver(event.target);
+});
 setInterval(checkNewDay,30000);
 function refreshActiveTracker(){if(currentView==='health')refreshTrackerDate('health',$('health-form').elements.date.value||today());if(currentView==='wellness')refreshTrackerDate('wellness',$('wellness-form').elements.date.value||today());}
 window.addEventListener('focus',()=>{checkNewDay();refreshToday(true);refreshActiveTracker();});

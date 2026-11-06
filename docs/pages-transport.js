@@ -177,6 +177,17 @@ window.GatherTransport=(()=>{
  }
  async function request(path,options={}){
    const method=options.method||'GET';
+   const centrumMeal = /^\/api\/meals\/([a-zA-Z0-9_-]{1,100})\/centrum-silver$/.exec(path);
+   if(method==='PATCH'&&centrumMeal){
+     const {centrumSilver} = JSON.parse(options.body);
+     if(typeof centrumSilver!=='boolean')throw Error('Choose whether Derick took Centrum Silver.');
+     const saved = documentValue(await remote('PATCH','/'+centrumMeal[1],{
+       'currentDocument.exists':'true',
+       'updateMask.fieldPaths':'centrumSilver'
+     },{fields:typedFields({centrumSilver})}));
+     updateCachedEntry('food_tracker_meals',saved);
+     return saved;
+   }
    if(method==='GET'&&path.startsWith('/api/wellness/range/')){
      const [start,end]=path.slice('/api/wellness/range/'.length).split('/');
      const isDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(value);

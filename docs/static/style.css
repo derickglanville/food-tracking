@@ -63,3 +63,6 @@
   #open-wellness-history{padding-inline:10px}
   #wellness-history-dialog .history-controls{display:flex;flex-wrap:wrap}
 }
+
+.breakfast-centrum{margin:10px 0 14px;padding:9px 12px;min-height:44px;border:1px solid #d7e4c4;border-radius:8px;background:#f1f7e8;color:var(--green);cursor:pointer}
+.breakfast-centrum input{flex:none;accent-color:var(--green)}
