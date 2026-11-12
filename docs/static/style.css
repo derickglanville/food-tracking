@@ -66,3 +66,103 @@
 
 .breakfast-centrum{margin:10px 0 14px;padding:9px 12px;min-height:44px;border:1px solid #d7e4c4;border-radius:8px;background:#f1f7e8;color:var(--green);cursor:pointer}
 .breakfast-centrum input{flex:none;accent-color:var(--green)}
+
+/* Gather's dark palette. */
+:root {
+  color-scheme: dark;
+  --paper: #101714;
+  --surface: #192420;
+  --surface-raised: #24342d;
+  --ink: #eef5f0;
+  --muted: #b3c4b9;
+  --line: #40534a;
+  --green: #a6dfb7;
+  --action: #2a654c;
+  --success-bg: #233d30;
+  --success-ink: #c4ebca;
+  --warning-bg: #3e321e;
+  --warning-ink: #ffdc9d;
+  --danger-bg: #402925;
+  --danger-ink: #ffb7a8;
+}
+
+body { color: var(--ink); }
+.sidebar, .topbar, .mobile-nav, .panel, .stat, .recipe-card, .login-card,
+.georgette-weight-tracker, .journal-day {
+  background: var(--surface);
+  border-color: var(--line);
+}
+.login-body { background: radial-gradient(ellipse at top right, #244135, transparent 65%), var(--paper); }
+dialog { background: var(--surface); }
+dialog::backdrop { background: #080e0bd1; }
+.brand-mark, .hero, .mobile-nav .mobile-add, .primary { background: var(--action); color: #fff; }
+.primary:hover { background: #327759; }
+.secondary, .nav.active, .nav:hover {
+  background: var(--surface-raised);
+  border-color: var(--line);
+  color: var(--green);
+}
+.nav, .mobile-nav button, .sidebar-note, .breadcrumb span, .eyebrow,
+.page-heading > div > p:last-child, .muted, .stat-top, .stat small, .meal-meta, .meal-other,
+.search-wrap span, .inspiration-strip p, footer, footer span, .footnote,
+.recipe-tag, .recipe-body details, .metric-description, .metric-description span,
+.journal-day li, .georgette-weight-tracker summary small {
+  color: var(--muted);
+}
+.mobile-nav button.active, .stat-icon, .sidebar-note > span, .inspiration-strip > span {
+  color: var(--green);
+}
+label, .filters select, .search-wrap input { color: var(--ink); }
+.filters select, .search-wrap, label input, label select, label textarea,
+.fasting-controls input, .fasting-controls select,
+.georgette-weight-table input, .georgette-weight-table select {
+  background: var(--paper);
+  border-color: var(--line);
+  color: var(--ink);
+}
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+input[type="checkbox"] { accent-color: var(--action); }
+.meal-row { border-color: var(--line); }
+.meal-icon, .avatar { background: var(--warning-bg); color: var(--warning-ink); }
+.meal-icon.Lunch { background: var(--success-bg); color: var(--success-ink); }
+.meal-icon.Dinner { background: var(--danger-bg); color: var(--danger-ink); }
+.bar-track, .recipe-art, .recipe-card:nth-child(3n+2) .recipe-art, .recipe-card:nth-child(3n) .recipe-art {
+  background: var(--surface-raised);
+}
+.inspiration-strip, .health-reminder, .walking-reminder, .nutrition-summary, .derick-nutrition,
+.fasting-control, .fasting-setup, .fasting-banner, .reminder-status, .breakfast-centrum,
+.weight-progress-summary, .journal-day.has-meals, .wellness-yes, #wellness-history-dialog .wellness-yes,
+#notice {
+  background: var(--success-bg);
+  border-color: #506f5b;
+  color: var(--success-ink);
+}
+.health-reminder p:last-child, .walking-reminder span, .nutrition-summary b, .nutrition-summary span,
+.nutrition-summary p, .nutrition-summary small, .derick-nutrition p, .derick-nutrition p span,
+.fasting-control p, .fasting-setup h2, .fasting-setup p:last-child, .fasting-controls label,
+.reminder-status-dot, .wellness-yes b {
+  color: var(--success-ink);
+}
+.journal-day, .journal-day li b, .georgette-weight-tracker summary { color: var(--ink); }
+.journal-day-count, .journal-day header strong { background: var(--surface-raised); color: var(--green); }
+.journal-day:hover, .journal-day:focus-visible { border-color: var(--green); box-shadow: none; }
+.wellness-no, #wellness-history-dialog .wellness-no, .georgette-reminder, .review-badge {
+  background: var(--warning-bg);
+  border-color: #80673b;
+  color: var(--warning-ink);
+}
+.wellness-no b { color: var(--warning-ink); }
+#wellness-history-dialog .wellness-empty {
+  background: var(--surface-raised);
+  border-color: var(--line);
+  color: var(--ink);
+}
+#notice.bad { background: var(--danger-bg); border-color: #8c5950; color: var(--danger-ink); }
+.danger, .error { color: var(--danger-ink); }
+.danger { border-color: #8c5950; }
+.needs-review {
+  background: var(--warning-bg) !important;
+  border-color: #ac884f !important;
+  box-shadow: none;
+  color: var(--warning-ink);
+}
