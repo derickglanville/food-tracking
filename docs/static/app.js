@@ -214,6 +214,63 @@ function breakfastCentrumSilver(entry) {
     Derick took Centrum Silver
   </label>`;
 }
+const centrumHistoryPageSize = 28;
+let centrumHistoryAnchor;
+let centrumHistoryOffset = 0;
+let centrumHistoryRequest = 0;
+
+function renderCentrumHistory(newest, entries) {
+  const statuses = new Map();
+  for (const entry of entries) {
+    if (entry.mealType !== 'Breakfast') continue;
+    if (entry.centrumSilver === true) statuses.set(entry.date, 'taken');
+    if (entry.centrumSilver === false && !statuses.has(entry.date)) statuses.set(entry.date, 'missed');
+  }
+  const labels = {taken:'Taken', missed:'Missed', unlogged:'Not logged'};
+  const counts = {taken:0, missed:0, unlogged:0};
+  $('centrum-history-cards').innerHTML = Array.from({length:centrumHistoryPageSize}, (_, index) => {
+    const date = shiftDate(newest, -index);
+    const status = statuses.get(date) || 'unlogged';
+    counts[status]++;
+    const label = new Date(date + 'T12:00:00').toLocaleDateString(undefined, {
+      weekday:'short', month:'short', day:'numeric'
+    });
+    return `<div class="centrum-history-card centrum-${status}"><span>${label}</span><b>${labels[status]}</b></div>`;
+  }).join('');
+  for (const status of Object.keys(counts)) {
+    $('centrum-count-' + status).textContent = `${counts[status]} ${labels[status].toLowerCase()}`;
+  }
+}
+
+async function loadCentrumHistory() {
+  const request = ++centrumHistoryRequest;
+  const newest = shiftDate(centrumHistoryAnchor, -centrumHistoryOffset);
+  const oldest = shiftDate(newest, 1 - centrumHistoryPageSize);
+  const dialog = $('centrum-history-dialog');
+  const message = $('centrum-history-message');
+  const cards = $('centrum-history-cards');
+  $('centrum-history-newer').disabled = centrumHistoryOffset === 0;
+  $('centrum-history-range').textContent = `${formatDate(oldest)} – ${formatDate(newest)}`;
+  $('centrum-history-counts').hidden = true;
+  cards.replaceChildren();
+  cards.scrollTop = 0;
+  message.textContent = 'Loading Centrum Silver history…';
+  message.hidden = false;
+
+  try {
+    const entries = window.GatherTransport
+      ? (await api(`/api/meals/range/${oldest}/${newest}`)).meals
+      : meals;
+    if (request !== centrumHistoryRequest || !dialog.open) return;
+    renderCentrumHistory(newest, entries);
+    message.hidden = true;
+    $('centrum-history-counts').hidden = false;
+  } catch (error) {
+    if (request !== centrumHistoryRequest || !dialog.open) return;
+    message.textContent = 'Could not load Centrum Silver history. ' + error.message;
+  }
+}
+
 function dayCard(){
   const days=availableDays();
   if(!days.length)return '<div class="empty"><b>No days match these filters.</b>Clear your filters or return to today.<br><button class="secondary" data-day-today>Today</button></div>';
@@ -226,7 +283,7 @@ function dayCard(){
   <article class="day-card" data-date="${selectedDay}" aria-label="Meals for ${label}"><header class="day-card-header"><div><p class="eyebrow">${selectedDay===today()?'TODAY’S CARD':'DAILY MEAL CARD'}</p><h2>${label}</h2><p>${complete} of 3 meals recorded${hasMealFilters()?' · Showing the full day for your matching meals':''}</p></div><span class="day-progress" aria-label="${complete} of 3 meals recorded">${complete}/3</span></header>
   ${fastingBanner(selectedDay)}${nutritionSummary(entries)}<div class="day-meals">${types.map(type=>{
     const rows=entries.filter(e=>e.mealType===type);
-    return `<section class="day-meal" data-meal-type="${type}"><div class="day-meal-heading"><span class="meal-icon ${type}">${icons[type]}</span><h3>${type}</h3><span class="meal-state">${rows.length?'Recorded':'Not recorded'}</span></div>${rows.length?rows.map(e=>`<div class="day-entry"><h4>${escapeHtml(e.meal||'Main meal not recorded')}</h4>${e.derickMeal?`<p class="day-other"><b>Derick</b> ${escapeHtml(e.derickMeal.toLowerCase()==='same'?(e.meal||'Same (main meal not recorded)'):e.derickMeal)}</p>`:''}${type==='Breakfast'?breakfastCentrumSilver(e):''}<p class="day-preparer">Prepared / bought by <b>${escapeHtml(e.preparer||'Not recorded')}</b></p>${e.notes?`<p class="day-notes">${escapeHtml(e.notes)}</p>`:''}${e.needsReview?'<span class="review-badge">Review preparer</span>':''}${hasMealFilters()&&matchIds.has(e.id)?'<span class="match-badge">Matches search</span>':''}<button class="secondary" data-edit="${escapeHtml(e.id)}" aria-label="Edit ${type} on ${selectedDay}">Edit ${type.toLowerCase()} ↗</button></div>`).join(''):`<div class="day-blank"><p>A space for your ${type.toLowerCase()}.</p><button class="secondary" data-day-add="${type}" data-date="${selectedDay}">＋ Add ${type.toLowerCase()}</button></div>`}</section>`;
+    return `<section class="day-meal" data-meal-type="${type}"><div class="day-meal-heading"><span class="meal-icon ${type}">${icons[type]}</span><h3>${type}</h3><span class="meal-state">${rows.length?'Recorded':'Not recorded'}</span></div>${type==='Breakfast'?'<button type="button" class="secondary centrum-history-open" data-open-centrum-history aria-haspopup="dialog">⤢ Centrum Silver history</button>':''}${rows.length?rows.map(e=>`<div class="day-entry"><h4>${escapeHtml(e.meal||'Main meal not recorded')}</h4>${e.derickMeal?`<p class="day-other"><b>Derick</b> ${escapeHtml(e.derickMeal.toLowerCase()==='same'?(e.meal||'Same (main meal not recorded)'):e.derickMeal)}</p>`:''}${type==='Breakfast'?breakfastCentrumSilver(e):''}<p class="day-preparer">Prepared / bought by <b>${escapeHtml(e.preparer||'Not recorded')}</b></p>${e.notes?`<p class="day-notes">${escapeHtml(e.notes)}</p>`:''}${e.needsReview?'<span class="review-badge">Review preparer</span>':''}${hasMealFilters()&&matchIds.has(e.id)?'<span class="match-badge">Matches search</span>':''}<button class="secondary" data-edit="${escapeHtml(e.id)}" aria-label="Edit ${type} on ${selectedDay}">Edit ${type.toLowerCase()} ↗</button></div>`).join(''):`<div class="day-blank"><p>A space for your ${type.toLowerCase()}.</p><button class="secondary" data-day-add="${type}" data-date="${selectedDay}">＋ Add ${type.toLowerCase()}</button></div>`}</section>`;
   }).join('')}</div><div class="day-card-footer"><span>${entries.length} saved meal ${entries.length===1?'entry':'entries'} · ${hasMealFilters()?`${days.length} matching days`:'A fresh card is ready every day'}</span><button class="text-button" data-day-add="Snack" data-date="${selectedDay}">＋ Add snack</button></div></article>`;
 }
 function historyCards(dates){return dates.map(date=>{
@@ -378,6 +435,12 @@ document.addEventListener('click',event=>{
   const dayShift=event.target.closest('[data-day-shift]');if(dayShift){const days=availableDays();selectedDay=days[days.indexOf(selectedDay)+Number(dayShift.dataset.dayShift)]||selectedDay;render();}
   if(event.target.closest('[data-day-today]'))goToDay(today());
   const journalDay=event.target.closest('[data-journal-day]');if(journalDay){if($('history-dialog').open)$('history-dialog').close();goToDay(journalDay.dataset.journalDay);}
+  if (event.target.closest('[data-open-centrum-history]')) {
+    centrumHistoryAnchor = today();
+    centrumHistoryOffset = 0;
+    $('centrum-history-dialog').showModal();
+    loadCentrumHistory();
+  }
   const historyShift=event.target.closest('[data-history-shift]');if(historyShift){journalHistoryOffset=Math.max(0,journalHistoryOffset+Number(historyShift.dataset.historyShift));render();loadHistoryPage();}
   if(event.target.closest('[data-open-history]')){popoutHistoryOffset=0;renderHistoryPopout();$('history-dialog').showModal();loadHistoryRange(popoutHistoryOffset,28,true);}
   const popoutShift=event.target.closest('[data-popout-history-shift]');if(popoutShift){popoutHistoryOffset=Math.max(0,popoutHistoryOffset+Number(popoutShift.dataset.popoutHistoryShift));renderHistoryPopout();loadHistoryRange(popoutHistoryOffset,28,true);}
@@ -433,6 +496,16 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkNewD
 $('georgette-weight-form').onsubmit=async event=>{event.preventDefault();const form=event.target;georgetteWeightWeeks=georgetteWeightWeeks.map(item=>{const weight=form.querySelector(`[data-georgette-week="${item.week}"][data-georgette-field="weight"]`)?.value||'',status=form.querySelector(`[data-georgette-week="${item.week}"][data-georgette-field="status"]`)?.value||'Not recorded',notes=form.querySelector(`[data-georgette-week="${item.week}"][data-georgette-field="notes"]`)?.value||'';return {...item,weight,status,notes};});const button=form.querySelector('button[type="submit"]');button.disabled=true;$('georgette-weight-status').textContent='Saving to Firebase…';try{await api('/api/georgette-weight',{method:'PUT',body:JSON.stringify({weeks:georgetteWeightWeeks})});$('georgette-weight-status').textContent='Saved to Firebase.';renderGeorgetteWeightTracker();}catch(error){$('georgette-weight-status').textContent=error.message;}finally{button.disabled=false;}};
 $('close-dialog').onclick=()=>$('meal-dialog').close();
 $('close-history-dialog').onclick=()=>$('history-dialog').close();
+$('centrum-history-close').onclick = () => $('centrum-history-dialog').close();
+$('centrum-history-older').onclick = () => {
+  centrumHistoryOffset += centrumHistoryPageSize;
+  loadCentrumHistory();
+};
+$('centrum-history-newer').onclick = () => {
+  if (centrumHistoryOffset === 0) return;
+  centrumHistoryOffset -= centrumHistoryPageSize;
+  loadCentrumHistory();
+};
 $('open-wellness-history').onclick = () => {
   wellnessHistoryAnchor = today();
   wellnessHistoryOffset = 0;
