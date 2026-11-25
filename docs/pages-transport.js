@@ -177,6 +177,24 @@ window.GatherTransport=(()=>{
  }
  async function request(path,options={}){
    const method=options.method||'GET';
+   if(path==='/api/departure'&&method==='GET'){
+     try{
+       return {record:documentValue(await remote('GET','/departure_tracker',{},undefined,'food_tracker_health'))};
+     }catch(error){
+       if(String(error.message).startsWith('Firebase returned 404'))return {record:null};
+       throw error;
+     }
+   }
+   if(path==='/api/departure'&&method==='PATCH'){
+     const {leftHouse}=JSON.parse(options.body);
+     if(typeof leftHouse!=='boolean')throw Error('Choose whether you left the house.');
+     const record={leftHouse};
+     const params={};
+     if(leftHouse)record.departedAt=new Date().toISOString();
+     else params['updateMask.fieldPaths']='leftHouse';
+     return {record:documentValue(await remote('PATCH','/departure_tracker',params,{fields:typedFields(record)},'food_tracker_health'))};
+   }
+
    const centrumMeal = /^\/api\/meals\/([a-zA-Z0-9_-]{1,100})\/centrum-silver$/.exec(path);
    if(method==='PATCH'&&centrumMeal){
      const {centrumSilver} = JSON.parse(options.body);

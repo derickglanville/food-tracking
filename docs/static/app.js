@@ -43,6 +43,7 @@ function setView(view) {
   const [label,title,subtitle] = titles[view];
   $('page-label').textContent=label; $('page-title').textContent=title; $('page-subtitle').textContent=subtitle;
   document.querySelector('.filters').hidden=['ideas','health','wellness'].includes(view);
+  if(view==='dashboard'&&loaded)loadDeparture();
   if(view==='health')loadTracker('health').then(()=>refreshTrackerDate('health',$('health-form').elements.date.value||today()));
   if(view==='wellness')loadTracker('wellness').then(()=>refreshTrackerDate('wellness',$('wellness-form').elements.date.value||today()));
   window.scrollTo({top:0,behavior:'smooth'});
@@ -408,8 +409,72 @@ function applyMeals(data){
   if (data.storageMode) mealsReadOnly = data.storageMode === 'preview';
   meals=data.meals.map(entry=>({...entry,preparer:canonicalPreparer(entry.preparer)}));meals.forEach(entry=>checkedMealDays.add(entry.date));checkedMealDays.add(today());sortMeals();loaded=true;updateOptions();applyFilters();
 }
+let departureRecord = null;
+let departureSaving = false;
+let departureRequest = 0;
+let departureRefreshTime = 0;
+let departureLoaded = false;
+
+function renderDeparture() {
+  $('left-house').checked = departureRecord?.leftHouse === true;
+  $('left-house').disabled = departureSaving || !departureLoaded || mealsReadOnly;
+  $('departure-again').disabled = $('left-house').disabled;
+  const timestamp = departureRecord?.departedAt;
+  $('departure-time').value = timestamp ? new Date(timestamp).toLocaleString('en-US', {
+    timeZone:'America/New_York', year:'numeric', month:'short', day:'numeric',
+    hour:'numeric', minute:'2-digit', second:'2-digit'
+  }) : '';
+}
+
+async function loadDeparture(force = false) {
+  if (departureSaving || (!force && Date.now() - departureRefreshTime < 30000)) return;
+  if (mealsReadOnly || !window.GatherTransport) {
+    $('departure-status').textContent = 'Departure recording is available in the Firebase app.';
+    return;
+  }
+  departureRefreshTime = Date.now();
+  const request = ++departureRequest;
+  try {
+    const {record} = await api('/api/departure');
+    if (request !== departureRequest) return;
+    departureRecord = record;
+    departureLoaded = true;
+    renderDeparture();
+    $('departure-status').textContent = 'Changes save automatically to Firebase.';
+  } catch (error) {
+    if (request === departureRequest) {
+      $('departure-status').textContent = 'Could not refresh departure. ' + error.message;
+    }
+  }
+}
+
+async function saveDeparture(leftHouse) {
+  if (departureSaving || !departureLoaded || mealsReadOnly) return;
+  departureSaving = true;
+  ++departureRequest;
+  $('left-house').disabled = true;
+  $('departure-again').disabled = true;
+  $('departure-status').textContent = 'Saving to Firebase…';
+  try {
+    const {record} = await api('/api/departure', {
+      method:'PATCH', body:JSON.stringify({leftHouse})
+    });
+    departureRecord = record;
+    departureRefreshTime = Date.now();
+    $('departure-status').textContent = leftHouse ? 'Departure saved to Firebase.' : 'Checkbox reset. The most recent departure time is retained.';
+  } catch (error) {
+    $('departure-status').textContent = 'Could not save departure. ' + error.message;
+  } finally {
+    departureSaving = false;
+    renderDeparture();
+  }
+}
+
+$('left-house').onchange = event => saveDeparture(event.target.checked);
+$('departure-again').onclick = () => saveDeparture(true);
+
 async function load() {
-  try {const data=await api('/api/meals');applyMeals(data);await loadGeorgetteWeightTracker();
+  try {const data=await api('/api/meals');applyMeals(data);loadDeparture(true);await loadGeorgetteWeightTracker();
     if(data.storageMode==='preview'){
       $('connection').textContent='Spreadsheet preview';$('sync-status').textContent='Read-only local preview';
       notice('Spreadsheet preview · Firebase import approval is pending. You can explore your history and meal ideas; changes cannot be saved yet.');
@@ -490,7 +555,7 @@ document.addEventListener('change', event => {
   if (event.target.matches('[data-breakfast-centrum]')) saveBreakfastCentrumSilver(event.target);
 });
 setInterval(checkNewDay,30000);
-function refreshActiveTracker(){if(currentView==='health')refreshTrackerDate('health',$('health-form').elements.date.value||today());if(currentView==='wellness')refreshTrackerDate('wellness',$('wellness-form').elements.date.value||today());}
+function refreshActiveTracker(){if(currentView==='dashboard')loadDeparture();if(currentView==='health')refreshTrackerDate('health',$('health-form').elements.date.value||today());if(currentView==='wellness')refreshTrackerDate('wellness',$('wellness-form').elements.date.value||today());}
 window.addEventListener('focus',()=>{checkNewDay();refreshToday(true);refreshActiveTracker();});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){checkNewDay();refreshToday(true);refreshActiveTracker();}});
 $('georgette-weight-form').onsubmit=async event=>{event.preventDefault();const form=event.target;georgetteWeightWeeks=georgetteWeightWeeks.map(item=>{const weight=form.querySelector(`[data-georgette-week="${item.week}"][data-georgette-field="weight"]`)?.value||'',status=form.querySelector(`[data-georgette-week="${item.week}"][data-georgette-field="status"]`)?.value||'Not recorded',notes=form.querySelector(`[data-georgette-week="${item.week}"][data-georgette-field="notes"]`)?.value||'';return {...item,weight,status,notes};});const button=form.querySelector('button[type="submit"]');button.disabled=true;$('georgette-weight-status').textContent='Saving to Firebase…';try{await api('/api/georgette-weight',{method:'PUT',body:JSON.stringify({weeks:georgetteWeightWeeks})});$('georgette-weight-status').textContent='Saved to Firebase.';renderGeorgetteWeightTracker();}catch(error){$('georgette-weight-status').textContent=error.message;}finally{button.disabled=false;}};

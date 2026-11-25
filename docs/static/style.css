@@ -183,3 +183,13 @@ input[type="checkbox"] { accent-color: var(--action); }
 @media (max-width: 480px) {
   #centrum-history-dialog .history-controls { display: flex; }
 }
+
+.departure-panel { margin-bottom:22px; display:grid; gap:12px; }
+.departure-panel h2, .departure-panel p { margin:0; }
+.departure-panel .departure-check { color:var(--ink); font-size:17px; }
+.departure-panel .secondary { justify-self:start; white-space:normal; }
+.departure-panel input[readonly] { cursor:default; }
+@media(min-width:851px) {
+  .departure-panel { grid-template-columns:1fr 2fr auto; align-items:center; }
+  .departure-panel h2, .departure-panel p { grid-column:1/-1; }
+}
