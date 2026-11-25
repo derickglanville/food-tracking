@@ -193,3 +193,8 @@ input[type="checkbox"] { accent-color: var(--action); }
   .departure-panel { grid-template-columns:1fr 2fr auto; align-items:center; }
   .departure-panel h2, .departure-panel p { grid-column:1/-1; }
 }
+
+.departure-history { grid-column:1/-1; border-top:1px solid var(--line); padding-top:12px; }
+.departure-history summary { cursor:pointer; color:var(--green); font-weight:700; padding:8px 0; }
+.departure-history ol { padding-left:24px; max-height:320px; overflow:auto; }
+.departure-history li { padding:9px 4px; border-bottom:1px solid var(--line); }

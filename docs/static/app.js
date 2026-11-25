@@ -414,16 +414,35 @@ let departureSaving = false;
 let departureRequest = 0;
 let departureRefreshTime = 0;
 let departureLoaded = false;
+let departureEntries = [];
+let departureNextPage = '';
+let departureHistoryLoading = false;
+let departureAttempt = null;
+
+function departureTime(timestamp) {
+  return new Date(timestamp).toLocaleString('en-US', {
+    timeZone:'America/New_York', year:'numeric', month:'short', day:'numeric',
+    hour:'numeric', minute:'2-digit', second:'2-digit'
+  });
+}
+
+function renderDepartureHistory() {
+  $('departure-history-list').innerHTML = departureEntries.length
+    ? '<ol>' + departureEntries.map(entry =>
+      `<li>${escapeHtml(departureTime(entry.departedAt))}</li>`
+    ).join('') + '</ol>'
+    : '<p class="muted">No departures recorded yet.</p>';
+  $('departure-history-more').hidden = !departureNextPage;
+  $('departure-history-more').disabled = departureHistoryLoading;
+}
 
 function renderDeparture() {
   $('left-house').checked = departureRecord?.leftHouse === true;
   $('left-house').disabled = departureSaving || !departureLoaded || mealsReadOnly;
   $('departure-again').disabled = $('left-house').disabled;
   const timestamp = departureRecord?.departedAt;
-  $('departure-time').value = timestamp ? new Date(timestamp).toLocaleString('en-US', {
-    timeZone:'America/New_York', year:'numeric', month:'short', day:'numeric',
-    hour:'numeric', minute:'2-digit', second:'2-digit'
-  }) : '';
+  $('departure-time').value = timestamp ? departureTime(timestamp) : '';
+  renderDepartureHistory();
 }
 
 async function loadDeparture(force = false) {
@@ -435,9 +454,11 @@ async function loadDeparture(force = false) {
   departureRefreshTime = Date.now();
   const request = ++departureRequest;
   try {
-    const {record} = await api('/api/departure');
+    const {record,departures,nextPageToken} = await api('/api/departure');
     if (request !== departureRequest) return;
     departureRecord = record;
+    departureEntries = departures;
+    departureNextPage = nextPageToken;
     departureLoaded = true;
     renderDeparture();
     $('departure-status').textContent = 'Changes save automatically to Firebase.';
@@ -456,10 +477,18 @@ async function saveDeparture(leftHouse) {
   $('departure-again').disabled = true;
   $('departure-status').textContent = 'Saving to Firebase…';
   try {
-    const {record} = await api('/api/departure', {
-      method:'PATCH', body:JSON.stringify({leftHouse})
+    if (leftHouse && !departureAttempt) {
+      departureAttempt = {eventId:crypto.randomUUID(),departedAt:new Date().toISOString()};
+    }
+    const {record,departure} = await api('/api/departure', {
+      method:'PATCH', body:JSON.stringify({leftHouse,...(leftHouse?departureAttempt:{})})
     });
-    departureRecord = record;
+    departureRecord = {...record,departedAt:departure?.departedAt||departureEntries[0]?.departedAt||record.departedAt};
+    if (departure) {
+      departureEntries = [departure,...departureEntries.filter(entry=>entry.id!==departure.id)]
+        .sort((a,b)=>b.departedAt.localeCompare(a.departedAt));
+    }
+    departureAttempt = null;
     departureRefreshTime = Date.now();
     $('departure-status').textContent = leftHouse ? 'Departure saved to Firebase.' : 'Checkbox reset. The most recent departure time is retained.';
   } catch (error) {
@@ -472,6 +501,24 @@ async function saveDeparture(leftHouse) {
 
 $('left-house').onchange = event => saveDeparture(event.target.checked);
 $('departure-again').onclick = () => saveDeparture(true);
+$('departure-history-more').onclick = async () => {
+  if (!departureNextPage || departureHistoryLoading) return;
+  departureHistoryLoading = true;
+  const request = departureRequest;
+  renderDepartureHistory();
+  try {
+    const {departures,nextPageToken} = await api('/api/departure/history/' + encodeURIComponent(departureNextPage));
+    if (request !== departureRequest) return;
+    const byId = new Map([...departureEntries,...departures].map(entry=>[entry.id,entry]));
+    departureEntries = [...byId.values()].sort((a,b)=>b.departedAt.localeCompare(a.departedAt));
+    departureNextPage = nextPageToken;
+  } catch(error) {
+    $('departure-status').textContent = 'Could not load earlier departures. ' + error.message;
+  } finally {
+    departureHistoryLoading = false;
+    renderDepartureHistory();
+  }
+};
 
 async function load() {
   try {const data=await api('/api/meals');applyMeals(data);loadDeparture(true);await loadGeorgetteWeightTracker();

@@ -49,7 +49,7 @@ window.GatherTransport=(()=>{
  }
  async function remote(method,path='',params={},body,collection='food_tracker_meals'){
    await currentToken();
-   const url=new URL((collection==='food_tracker_meals'?root:collectionRoot(collection))+path);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
+   const url=new URL((collection===null?databaseRoot:collection==='food_tracker_meals'?root:collectionRoot(collection))+path);Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
    const send=()=>fetch(url,{method,headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},...(body?{body:JSON.stringify(body)}:{})});
    let response,refreshed=false;for(let attempt=0;attempt<4;attempt++){
      try{response=await send();}
@@ -175,24 +175,58 @@ window.GatherTransport=(()=>{
    const entry={id:'georgette_weight_tracker',kind:'georgette_weight_tracker',weeks:JSON.stringify(normalized)};
    await remote('PATCH','/'+entry.id,{}, {fields:typedFields(entry)},'food_tracker_health');return entry;
  }
+ async function departureHistory(pageToken=''){
+   const page=await remote('GET','/departure_tracker/events',{
+     pageSize:25,orderBy:'departedAt desc, __name__ desc',...(pageToken?{pageToken}:{})
+   },undefined,'food_tracker_health');
+   return {departures:(page.documents||[]).map(documentValue),nextPageToken:page.nextPageToken||''};
+ }
+
+ async function readDeparture(){
+   let record=null;
+   try{
+     record=documentValue(await remote('GET','/departure_tracker',{},undefined,'food_tracker_health'));
+   }catch(error){
+     if(!String(error.message).startsWith('Firebase returned 404'))throw error;
+   }
+   if(record?.departedAt&&!record.historyMigrated){
+     const name=`projects/${config.projectId}/databases/(default)/documents/food_tracker_health/departure_tracker`;
+     await remote('POST',':commit',{}, {writes:[
+       {update:{name:name+'/events/legacy',fields:typedFields({departedAt:record.departedAt,source:'Prior departure record'})}},
+       {update:{name,fields:typedFields({historyMigrated:true})},updateMask:{fieldPaths:['historyMigrated']}}
+     ]},null);
+   }
+   const history=await departureHistory();
+   if(record)record.departedAt=history.departures[0]?.departedAt||record.departedAt;
+   return {record,...history};
+ }
+
  async function request(path,options={}){
    const method=options.method||'GET';
-   if(path==='/api/departure'&&method==='GET'){
-     try{
-       return {record:documentValue(await remote('GET','/departure_tracker',{},undefined,'food_tracker_health'))};
-     }catch(error){
-       if(String(error.message).startsWith('Firebase returned 404'))return {record:null};
-       throw error;
-     }
+   if(path==='/api/departure'&&method==='GET')return readDeparture();
+   if(path.startsWith('/api/departure/history/')&&method==='GET'){
+     return departureHistory(decodeURIComponent(path.slice('/api/departure/history/'.length)));
    }
    if(path==='/api/departure'&&method==='PATCH'){
-     const {leftHouse}=JSON.parse(options.body);
+     const {leftHouse,eventId,departedAt}=JSON.parse(options.body);
      if(typeof leftHouse!=='boolean')throw Error('Choose whether you left the house.');
-     const record={leftHouse};
-     const params={};
-     if(leftHouse)record.departedAt=new Date().toISOString();
-     else params['updateMask.fieldPaths']='leftHouse';
-     return {record:documentValue(await remote('PATCH','/departure_tracker',params,{fields:typedFields(record)},'food_tracker_health'))};
+     if(!leftHouse){
+       const record=documentValue(await remote('PATCH','/departure_tracker',
+         {'updateMask.fieldPaths':'leftHouse'},{fields:typedFields({leftHouse:false})},'food_tracker_health'));
+       return {record};
+     }
+     if(!/^[a-zA-Z0-9_-]{1,100}$/.test(eventId||'')||
+        typeof departedAt!=='string'||!Number.isFinite(Date.parse(departedAt))||
+        new Date(departedAt).toISOString()!==departedAt){
+       throw Error('Choose a valid departure record.');
+     }
+     const name=`projects/${config.projectId}/databases/(default)/documents/food_tracker_health/departure_tracker`;
+     const departure={id:eventId,departedAt,source:'Manual check-in'};
+     await remote('POST',':commit',{}, {writes:[
+       {update:{name:name+'/events/'+eventId,fields:typedFields(departure)}},
+       {update:{name,fields:typedFields({leftHouse:true})},updateMask:{fieldPaths:['leftHouse']}}
+     ]},null);
+     return {record:{id:'departure_tracker',leftHouse:true,departedAt},departure};
    }
 
    const centrumMeal = /^\/api\/meals\/([a-zA-Z0-9_-]{1,100})\/centrum-silver$/.exec(path);
