@@ -501,6 +501,12 @@ async function saveDeparture(leftHouse) {
 
 $('left-house').onchange = event => saveDeparture(event.target.checked);
 $('departure-again').onclick = () => saveDeparture(true);
+$('departure-history-toggle').onclick = () => {
+  const content = $('departure-history-content');
+  content.hidden = !content.hidden;
+  $('departure-history-toggle').setAttribute('aria-expanded', String(!content.hidden));
+  $('departure-history-toggle').textContent = content.hidden ? 'Show departure history' : 'Hide departure history';
+};
 $('departure-history-more').onclick = async () => {
   if (!departureNextPage || departureHistoryLoading) return;
   departureHistoryLoading = true;
