@@ -409,6 +409,88 @@ function applyMeals(data){
   if (data.storageMode) mealsReadOnly = data.storageMode === 'preview';
   meals=data.meals.map(entry=>({...entry,preparer:canonicalPreparer(entry.preparer)}));meals.forEach(entry=>checkedMealDays.add(entry.date));checkedMealDays.add(today());sortMeals();loaded=true;updateOptions();applyFilters();
 }
+const watchRequestUrl = 'https://us-central1-glanville-issue-tracker.cloudfunctions.net/watchBridge/log';
+let watchChecking = false;
+let watchChecked = false;
+$('watch-request-url').value = watchRequestUrl;
+
+async function refreshWatchDevices() {
+  const {devices} = await api('/api/watch/devices');
+  const active = devices.filter(device => !device.revoked && Date.parse(device.expiresAt) > Date.now());
+  $('watch-device-select').innerHTML = active.map(device =>
+    `<option value="${escapeHtml(device.id)}">Created ${escapeHtml(formatDate(device.createdAt.slice(0,10)))} · ${escapeHtml(device.id.slice(0,8))}</option>`
+  ).join('');
+  $('watch-devices').hidden = !active.length;
+}
+
+async function checkWatchConnection() {
+  if (watchChecking) return;
+  watchChecking = true;
+  $('watch-check').disabled = true;
+  $('watch-status').textContent = 'Checking Watch service…';
+  try {
+    if (!window.GatherTransport) throw Error('Open the published Firebase app to pair a watch.');
+    const result = await api('/api/watch/status');
+    if (result.service !== 'gather-watch' || result.version !== 1) throw Error('The Watch service needs an update.');
+    await refreshWatchDevices();
+    $('watch-pair').disabled = false;
+    $('watch-status').textContent = 'Watch service ready. Create a Watch key, then set up the two shortcuts below.';
+  } catch (error) {
+    $('watch-pair').disabled = true;
+    $('watch-status').textContent = error.message;
+  } finally {
+    watchChecked = true;
+    watchChecking = false;
+    $('watch-check').disabled = false;
+  }
+}
+
+$('watch-setup').ontoggle = () => {
+  if ($('watch-setup').open && !watchChecked) checkWatchConnection();
+};
+$('watch-check').onclick = checkWatchConnection;
+$('watch-pair').onclick = async () => {
+  $('watch-pair').disabled = true;
+  try {
+    const result = await api('/api/watch/devices', {method:'POST', body:'{}'});
+    $('watch-key').value = result.token;
+    $('watch-key').dataset.deviceId = result.deviceId;
+    $('watch-pairing').hidden = false;
+    $('watch-status').textContent = 'Watch key created. Follow the shortcut setup steps below.';
+    await refreshWatchDevices();
+  } catch (error) {
+    $('watch-status').textContent = error.message;
+  } finally {
+    $('watch-pair').disabled = false;
+  }
+};
+$('watch-copy').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($('watch-key').value);
+    $('watch-status').textContent = 'Watch key copied. Paste it into the Authorization header of each shortcut.';
+  } catch {
+    $('watch-status').textContent = 'Copy was blocked. Tap the Watch key field and copy it manually.';
+  }
+};
+$('watch-revoke').onclick = async () => {
+  const deviceId = $('watch-device-select').value;
+  if (!deviceId) return;
+  $('watch-revoke').disabled = true;
+  try {
+    await api('/api/watch/revoke', {method:'POST', body:JSON.stringify({deviceId})});
+    if ($('watch-key').dataset.deviceId === deviceId) {
+      $('watch-key').value = '';
+      $('watch-pairing').hidden = true;
+    }
+    await refreshWatchDevices();
+    $('watch-status').textContent = 'Watch key revoked.';
+  } catch (error) {
+    $('watch-status').textContent = error.message;
+  } finally {
+    $('watch-revoke').disabled = false;
+  }
+};
+
 let departureRecord = null;
 let departureSaving = false;
 let departureRequest = 0;

@@ -211,3 +211,12 @@ input[type="checkbox"] { accent-color: var(--action); }
 .departure-history li { overflow-wrap:anywhere; }
 .departure-history ol { padding-left:24px; max-height:320px; overflow:auto; }
 .departure-history li { padding:9px 4px; border-bottom:1px solid var(--line); }
+
+.watch-setup { margin-bottom:22px; }
+.watch-setup summary { color:var(--green); font-weight:700; cursor:pointer; padding:8px 0; }
+.watch-setup p { margin-top:12px; }
+.watch-setup li { margin:10px 0; line-height:1.6; }
+.watch-setup button { margin:8px 8px 8px 0; white-space:normal; }
+.watch-setup section { margin:16px 0; }
+.watch-setup input, .watch-setup select { min-width:0; }
+.watch-setup h3 { margin-top:20px; }

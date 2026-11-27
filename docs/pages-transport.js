@@ -203,6 +203,25 @@ window.GatherTransport=(()=>{
 
  async function request(path,options={}){
    const method=options.method||'GET';
+   if(path.startsWith('/api/watch/')){
+     const base='https://us-central1-glanville-issue-tracker.cloudfunctions.net/watchBridge';
+     const endpoints={'/api/watch/status':'/health','/api/watch/devices':'/devices','/api/watch/revoke':'/devices/revoke'};
+     const endpoint=endpoints[path];
+     const allowed=path==='/api/watch/status'&&method==='GET'||
+       path==='/api/watch/devices'&&['GET','POST'].includes(method)||
+       path==='/api/watch/revoke'&&method==='POST';
+     if(!endpoint||!allowed)throw Error('Unsupported Watch operation.');
+     const headers={'Content-Type':'application/json'};
+     if(path!=='/api/watch/status')headers.Authorization='Bearer '+await currentToken();
+     let response;
+     try{
+       response=await fetch(base+endpoint,{method,headers,cache:'no-store',...(options.body?{body:options.body}:{})});
+     }catch{throw Error('The Watch service is not reachable. Its Firebase backend must be deployed first.');}
+     let result;try{result=await response.json();}catch{throw Error('The Watch service is awaiting deployment.');}
+     if(!response.ok||!result.ok)throw Error(result.message||'The Watch service is awaiting deployment.');
+     return result;
+   }
+
    if(path==='/api/departure'&&method==='GET')return readDeparture();
    if(path.startsWith('/api/departure/history/')&&method==='GET'){
      return departureHistory(decodeURIComponent(path.slice('/api/departure/history/'.length)));
